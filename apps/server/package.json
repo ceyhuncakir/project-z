@@ -1,32 +1,35 @@
 {
-  "name": "server",
-  "type": "module",
-  "main": "src/index.ts",
-  "scripts": {
-    "build": "tsc -b ../../packages/api && tsdown",
-    "check-types": "tsc -b ../../packages/api && tsc --noEmit",
-    "compile": "bun build --compile --no-compile-autoload-dotenv --minify --sourcemap --bytecode ./src/index.ts --outfile server",
-    "dev": "bun run --hot src/index.ts",
-    "start": "bun run dist/index.mjs",
-    "env:generate": "varlock codegen",
-    "auth:generate": "varlock run -- bun x auth@latest generate --config src/services.ts --output ../../packages/db/src/schema/auth.ts --yes"
-  },
-  "dependencies": {
-    "@orpc/openapi": "catalog:",
-    "@orpc/server": "catalog:",
-    "@orpc/zod": "catalog:",
-    "@switchyard/api": "workspace:*",
-    "@switchyard/auth": "workspace:*",
-    "@switchyard/db": "workspace:*",
-    "better-auth": "catalog:",
-    "hono": "^4.13.7",
-    "varlock": "catalog:",
-    "zod": "catalog:"
-  },
-  "devDependencies": {
-    "@switchyard/config": "workspace:*",
-    "@types/bun": "catalog:",
-    "tsdown": "^0.23.0",
-    "typescript": "catalog:"
-  }
+	"name": "server",
+	"type": "module",
+	"main": "src/index.ts",
+	"scripts": {
+		"build": "tsc -b ../../packages/api && tsdown",
+		"check-types": "tsc -b ../../packages/api && tsc --noEmit",
+		"compile": "bun build --compile --no-compile-autoload-dotenv --minify --sourcemap --bytecode ./src/index.ts --outfile server",
+		"dev": "bun run --hot src/index.ts",
+		"start": "bun run dist/index.mjs",
+		"env:generate": "varlock codegen",
+		"auth:generate": "varlock run -- bun x auth@latest generate --config src/services.ts --output ../../packages/db/src/schema/auth.ts --yes"
+	},
+	"dependencies": {
+		"@orpc/openapi": "catalog:",
+		"@orpc/server": "catalog:",
+		"@orpc/zod": "catalog:",
+		"@switchyard/api": "workspace:*",
+		"@switchyard/auth": "workspace:*",
+		"@switchyard/db": "workspace:*",
+		"better-auth": "catalog:",
+		"hono": "^4.13.7",
+		"varlock": "catalog:",
+		"zod": "catalog:",
+		"@modelcontextprotocol/sdk": "^1.32.1",
+		"@polar-sh/sdk": "^0.47.0",
+		"@switchyard/cloud": "workspace:*"
+	},
+	"devDependencies": {
+		"@switchyard/config": "workspace:*",
+		"@types/bun": "catalog:",
+		"tsdown": "^0.23.0",
+		"typescript": "catalog:"
+	}
 }

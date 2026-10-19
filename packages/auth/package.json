@@ -1,26 +1,24 @@
 {
-  "name": "@switchyard/auth",
-  "type": "module",
-  "exports": {
-    ".": "./src/index.ts",
-    "./*": "./src/*.ts"
-  },
-  "scripts": {
-    "build": "tsc -b",
-    "check-types": "tsc -b"
-  },
-  "dependencies": {
-    "@better-auth/core": "1.7.7",
-    "@better-auth/drizzle-adapter": "1.7.7",
-    "@polar-sh/better-auth": "catalog:",
-    "@polar-sh/sdk": "^0.47.0",
-    "@switchyard/db": "workspace:*",
-    "better-auth": "catalog:",
-    "drizzle-orm": "catalog:",
-    "zod": "catalog:"
-  },
-  "devDependencies": {
-    "@switchyard/config": "workspace:*",
-    "typescript": "catalog:"
-  }
+	"name": "@switchyard/auth",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./*": "./src/*.ts"
+	},
+	"scripts": {
+		"build": "tsc -b",
+		"check-types": "tsc -b"
+	},
+	"dependencies": {
+		"@better-auth/core": "1.7.7",
+		"@better-auth/drizzle-adapter": "1.7.7",
+		"@switchyard/db": "workspace:*",
+		"better-auth": "catalog:",
+		"drizzle-orm": "catalog:",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@switchyard/config": "workspace:*",
+		"typescript": "catalog:"
+	}
 }

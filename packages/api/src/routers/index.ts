@@ -1,17 +1,348 @@
 import type { RouterClient } from "@orpc/server";
+import { CONTINENTS, PROVIDER_IDS, planFiltersSchema } from "@switchyard/cloud";
+import { server } from "@switchyard/db/schema/app";
+import { and, count, eq, notInArray } from "drizzle-orm";
+import { z } from "zod";
 
-import { protectedProcedure, publicProcedure } from "../index";
+import { publicProcedure, sessionProcedure, userProcedure } from "../index";
+import { listActivity } from "../services/activity";
+import {
+	createApiKey,
+	listApiKeys,
+	revokeApiKey,
+	serializeApiKey,
+	updateApiKey,
+} from "../services/api-keys";
+import { burnRate } from "../services/billing";
+import {
+	listImages,
+	listProviders,
+	listRegions,
+	previewRoute,
+	searchPlans,
+	searchPlansInputSchema,
+} from "../services/catalog";
+import { createPortalSession, createTopupCheckout } from "../services/payments";
+import {
+	createServer,
+	createServerInputSchema,
+	deleteServer,
+	getServer,
+	listServers,
+	powerAction,
+} from "../services/servers";
+import { addSshKey, deleteSshKey, listSshKeys } from "../services/ssh-keys";
+import {
+	addCredits,
+	ensureWallet,
+	getBalance,
+	listTransactions,
+	quoteTopup,
+	TOPUP_FEE_MIN_MICROS,
+	TOPUP_FEE_PERCENT,
+	TOPUP_MAX_USD,
+	TOPUP_MIN_USD,
+} from "../services/wallet";
+
+const idInput = z.object({ id: z.string() });
+
+const catalogRouter = {
+	providers: publicProcedure
+		.route({
+			method: "GET",
+			path: "/providers",
+			tags: ["Catalog"],
+			summary: "List providers",
+		})
+		.handler(({ context }) => listProviders(context)),
+	regions: publicProcedure
+		.route({
+			method: "GET",
+			path: "/regions",
+			tags: ["Catalog"],
+			summary: "List regions",
+		})
+		.input(
+			z
+				.object({
+					providers: z.array(z.enum(PROVIDER_IDS)).optional(),
+					countries: z.array(z.string().length(2)).optional(),
+					continents: z.array(z.enum(CONTINENTS)).optional(),
+				})
+				.default({}),
+		)
+		.handler(({ context, input }) => listRegions(context, input)),
+	plans: publicProcedure
+		.route({
+			method: "POST",
+			path: "/plans/search",
+			tags: ["Catalog"],
+			summary: "Search plans across every provider",
+		})
+		.input(searchPlansInputSchema)
+		.handler(({ context, input }) => searchPlans(context, input)),
+	route: publicProcedure
+		.route({
+			method: "POST",
+			path: "/plans/route",
+			tags: ["Catalog"],
+			summary: "Preview which plans the router would try, in order",
+		})
+		.input(z.object({ filters: planFiltersSchema.default({}) }))
+		.handler(({ context, input }) => previewRoute(context, input.filters)),
+	images: publicProcedure
+		.route({
+			method: "GET",
+			path: "/images",
+			tags: ["Catalog"],
+			summary: "List OS images",
+		})
+		.handler(() => listImages()),
+};
+
+const serversRouter = {
+	list: userProcedure
+		.route({
+			method: "GET",
+			path: "/servers",
+			tags: ["Servers"],
+			summary: "List servers",
+		})
+		.input(
+			z.object({ includeDeleted: z.coerce.boolean().optional() }).default({}),
+		)
+		.handler(({ context, input }) =>
+			listServers(context, context.actor.userId, input),
+		),
+	get: userProcedure
+		.route({
+			method: "GET",
+			path: "/servers/{id}",
+			tags: ["Servers"],
+			summary: "Get a server",
+		})
+		.input(
+			idInput.extend({
+				waitForRunningSeconds: z.coerce.number().min(0).max(120).optional(),
+			}),
+		)
+		.handler(({ context, input }) =>
+			getServer(context, context.actor.userId, input.id, {
+				waitForRunningSeconds: input.waitForRunningSeconds,
+			}),
+		),
+	create: userProcedure
+		.route({
+			method: "POST",
+			path: "/servers",
+			tags: ["Servers"],
+			summary: "Create a server",
+			description:
+				"Pass `planId` for an exact plan, or `requirements` to route to the cheapest match with automatic fallback.",
+		})
+		.input(createServerInputSchema)
+		.handler(({ context, input }) =>
+			createServer(context, context.actor, input),
+		),
+	delete: userProcedure
+		.route({
+			method: "DELETE",
+			path: "/servers/{id}",
+			tags: ["Servers"],
+			summary: "Destroy a server",
+		})
+		.input(idInput)
+		.handler(({ context, input }) =>
+			deleteServer(context, context.actor, input.id),
+		),
+	action: userProcedure
+		.route({
+			method: "POST",
+			path: "/servers/{id}/actions",
+			tags: ["Servers"],
+			summary: "Start, stop or reboot a server",
+		})
+		.input(idInput.extend({ action: z.enum(["start", "stop", "reboot"]) }))
+		.handler(({ context, input }) =>
+			powerAction(context, context.actor, input.id, input.action),
+		),
+};
+
+const accountRouter = {
+	overview: userProcedure
+		.route({
+			method: "GET",
+			path: "/account",
+			tags: ["Account"],
+			summary: "Balance and burn rate",
+		})
+		.handler(async ({ context }) => {
+			const userId = context.actor.userId;
+			await ensureWallet(context.db, userId);
+			const [balanceMicros, burnMicrosPerHour, [active]] = await Promise.all([
+				getBalance(context.db, userId),
+				burnRate(context.db, userId),
+				context.db
+					.select({ n: count() })
+					.from(server)
+					.where(
+						and(
+							eq(server.userId, userId),
+							notInArray(server.status, ["deleted", "error"]),
+						),
+					),
+			]);
+			return {
+				balanceMicros,
+				burnMicrosPerHour,
+				runwayHours:
+					burnMicrosPerHour > 0
+						? Math.max(0, balanceMicros / burnMicrosPerHour)
+						: null,
+				activeServers: active?.n ?? 0,
+				apiKey: context.apiKey ? serializeApiKey(context.apiKey) : null,
+			};
+		}),
+};
+
+const creditsRouter = {
+	transactions: userProcedure
+		.route({ method: "GET", path: "/credits/transactions", tags: ["Account"] })
+		.input(
+			z
+				.object({ limit: z.coerce.number().int().min(1).max(200).optional() })
+				.default({}),
+		)
+		.handler(({ context, input }) =>
+			listTransactions(context.db, context.actor.userId, input),
+		),
+	quote: publicProcedure
+		.input(z.object({ amountUsd: z.number() }))
+		.handler(({ input }) => quoteTopup(input.amountUsd)),
+	checkout: sessionProcedure
+		.input(z.object({ amountUsd: z.number() }))
+		.handler(({ context, input }) =>
+			createTopupCheckout(context, context.user, input.amountUsd),
+		),
+	portal: sessionProcedure.handler(({ context }) =>
+		createPortalSession(context, context.actor.userId),
+	),
+	addTestCredits: sessionProcedure
+		.input(z.object({ amountUsd: z.number().positive().max(100) }))
+		.handler(async ({ context, input }) => {
+			if (!context.config.allowTestCredits)
+				throw new Error("Test credits are disabled");
+			await addCredits(context.db, {
+				userId: context.actor.userId,
+				amountMicros: Math.round(input.amountUsd * 1e6),
+				kind: "promo",
+				description: "Test credits",
+			});
+			return {
+				balanceMicros: await getBalance(context.db, context.actor.userId),
+			};
+		}),
+};
+
+const apiKeysRouter = {
+	list: sessionProcedure.handler(async ({ context }) =>
+		(await listApiKeys(context.db, context.actor.userId)).map(serializeApiKey),
+	),
+	create: sessionProcedure
+		.input(
+			z.object({
+				name: z.string().min(1).max(64),
+				spendLimitUsd: z.number().positive().nullable().optional(),
+				maxServers: z.number().int().positive().nullable().optional(),
+			}),
+		)
+		.handler(async ({ context, input }) => {
+			const { key, record } = await createApiKey(
+				context.db,
+				context.actor.userId,
+				input,
+			);
+			return { key, apiKey: serializeApiKey(record) };
+		}),
+	update: sessionProcedure
+		.input(
+			idInput.extend({
+				name: z.string().min(1).max(64).optional(),
+				spendLimitUsd: z.number().positive().nullable().optional(),
+				maxServers: z.number().int().positive().nullable().optional(),
+			}),
+		)
+		.handler(async ({ context, input }) =>
+			serializeApiKey(
+				await updateApiKey(context.db, context.actor.userId, input.id, input),
+			),
+		),
+	revoke: sessionProcedure
+		.input(idInput)
+		.handler(({ context, input }) =>
+			revokeApiKey(context.db, context.actor.userId, input.id),
+		),
+};
+
+const sshKeysRouter = {
+	list: sessionProcedure.handler(({ context }) =>
+		listSshKeys(context.db, context.actor.userId),
+	),
+	add: sessionProcedure
+		.input(
+			z.object({
+				name: z.string().min(1).max(64),
+				publicKey: z.string().min(20).max(16_000),
+			}),
+		)
+		.handler(({ context, input }) =>
+			addSshKey(context.db, context.actor.userId, input),
+		),
+	delete: sessionProcedure
+		.input(idInput)
+		.handler(({ context, input }) =>
+			deleteSshKey(context.db, context.actor.userId, input.id),
+		),
+};
+
+const activityRouter = {
+	list: userProcedure
+		.route({ method: "GET", path: "/activity", tags: ["Account"] })
+		.input(
+			z
+				.object({
+					limit: z.coerce.number().int().min(1).max(200).optional(),
+					serverId: z.string().optional(),
+				})
+				.default({}),
+		)
+		.handler(({ context, input }) =>
+			listActivity(context.db, context.actor.userId, input),
+		),
+};
 
 export const appRouter = {
-  healthCheck: publicProcedure.handler(() => {
-    return "OK";
-  }),
-  privateData: protectedProcedure.handler(({ context }) => {
-    return {
-      message: "This is private",
-      user: context.session?.user,
-    };
-  }),
+	meta: publicProcedure.handler(({ context }) => ({
+		paymentsEnabled: Boolean(context.config.polar),
+		testCreditsEnabled: context.config.allowTestCredits,
+		githubAuth: context.config.githubAuth,
+		mcpUrl: `${context.config.apiUrl}/mcp`,
+		apiUrl: `${context.config.apiUrl}/v1`,
+		topup: {
+			feePercent: TOPUP_FEE_PERCENT,
+			feeMinMicros: TOPUP_FEE_MIN_MICROS,
+			minUsd: TOPUP_MIN_USD,
+			maxUsd: TOPUP_MAX_USD,
+		},
+	})),
+	catalog: catalogRouter,
+	servers: serversRouter,
+	account: accountRouter,
+	credits: creditsRouter,
+	apiKeys: apiKeysRouter,
+	sshKeys: sshKeysRouter,
+	activity: activityRouter,
 };
+
 export type AppRouter = typeof appRouter;
 export type AppRouterClient = RouterClient<typeof appRouter>;

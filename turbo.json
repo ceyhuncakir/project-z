@@ -1,68 +1,92 @@
 {
-  "$schema": "https://turbo.build/schema.json",
-  "ui": "tui",
-  "tasks": {
-    "build": {
-      "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": ["dist/**"]
-    },
-    "lint": {
-      "dependsOn": ["^lint"]
-    },
-    "check-types": {
-      "dependsOn": ["^check-types"],
-      "outputs": ["dist/**"]
-    },
-    "dev": {
-      "cache": false,
-      "persistent": true
-    },
-    "db:push": {
-      "cache": false,
-      "interactive": true
-    },
-    "db:generate": {
-      "cache": false,
-      "interactive": true
-    },
-    "db:migrate": {
-      "cache": false,
-      "interactive": true
-    },
-    "db:studio": {
-      "cache": false,
-      "persistent": true
-    },
-    "db:start": {
-      "cache": false
-    },
-    "db:stop": {
-      "cache": false
-    },
-    "db:watch": {
-      "cache": false,
-      "persistent": true
-    },
-    "db:down": {
-      "cache": false
-    }
-  },
-  "globalEnv": [
-    "BETTER_AUTH_SECRET",
-    "BETTER_AUTH_URL",
-    "CI",
-    "CORS_ORIGIN",
-    "DATABASE_URL",
-    "NODE_ENV",
-    "POLAR_ACCESS_TOKEN",
-    "POLAR_SUCCESS_URL",
-    "VERCEL",
-    "VERCEL_ENV",
-    "VERCEL_PROJECT_PRODUCTION_URL",
-    "VERCEL_URL",
-    "VITE_SERVER_URL",
-    "_VARLOCK_ENV_KEY"
-  ],
-  "globalDependencies": [".env*", "apps/*/.env*", "packages/*/.env*"]
+	"$schema": "https://turbo.build/schema.json",
+	"ui": "tui",
+	"tasks": {
+		"build": {
+			"dependsOn": ["^build"],
+			"inputs": ["$TURBO_DEFAULT$", ".env*"],
+			"outputs": ["dist/**"]
+		},
+		"lint": {
+			"dependsOn": ["^lint"]
+		},
+		"check-types": {
+			"dependsOn": ["^check-types"],
+			"outputs": ["dist/**"]
+		},
+		"dev": {
+			"cache": false,
+			"persistent": true
+		},
+		"db:push": {
+			"cache": false,
+			"interactive": true
+		},
+		"db:generate": {
+			"cache": false,
+			"interactive": true
+		},
+		"db:migrate": {
+			"cache": false,
+			"interactive": true
+		},
+		"db:studio": {
+			"cache": false,
+			"persistent": true
+		},
+		"db:start": {
+			"cache": false
+		},
+		"db:stop": {
+			"cache": false
+		},
+		"db:watch": {
+			"cache": false,
+			"persistent": true
+		},
+		"db:down": {
+			"cache": false
+		},
+		"test": {
+			"cache": false
+		}
+	},
+	"globalEnv": [
+		"ALLOW_TEST_CREDITS",
+		"BETTER_AUTH_SECRET",
+		"BETTER_AUTH_URL",
+		"CI",
+		"CLOUD_SANDBOX_ONLY",
+		"CORS_ORIGIN",
+		"DATABASE_URL",
+		"DIGITALOCEAN_TOKEN",
+		"EUR_USD_RATE",
+		"GITHUB_CLIENT_ID",
+		"GITHUB_CLIENT_SECRET",
+		"HETZNER_API_TOKEN",
+		"LINODE_TOKEN",
+		"NODE_ENV",
+		"OVH_APPLICATION_KEY",
+		"OVH_APPLICATION_SECRET",
+		"OVH_CONSUMER_KEY",
+		"OVH_ENDPOINT",
+		"OVH_PROJECT_ID",
+		"POLAR_ACCESS_TOKEN",
+		"POLAR_CREDITS_PRODUCT_ID",
+		"POLAR_SERVER",
+		"POLAR_SUCCESS_URL",
+		"POLAR_WEBHOOK_SECRET",
+		"SANDBOX_BOOT_SECONDS",
+		"SCW_PROJECT_ID",
+		"SCW_SECRET_KEY",
+		"TEST_DATABASE_URL",
+		"VERCEL",
+		"VERCEL_ENV",
+		"VERCEL_PROJECT_PRODUCTION_URL",
+		"VERCEL_URL",
+		"VITE_SERVER_URL",
+		"VULTR_API_KEY",
+		"_VARLOCK_ENV_KEY"
+	],
+	"globalDependencies": [".env*", "apps/*/.env*", "packages/*/.env*"]
 }
