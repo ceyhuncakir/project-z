@@ -458,7 +458,8 @@ function AutoTopupPanel() {
 						</Button>
 						<p className="basis-full text-[11.5px] text-muted-foreground">
 							Charged off-session to the saved card, plus the top-up fee. A
-							declined card turns auto top-up off and is logged in Activity.
+							declined card turns auto top-up off; it's logged in Activity and
+							emailed to you.
 						</p>
 					</form>
 				)}

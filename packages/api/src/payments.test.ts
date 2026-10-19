@@ -15,17 +15,21 @@ import Stripe from "stripe";
 import type { Actor, Services } from "./context";
 import {
 	createTopupCheckout,
+	getBillingDetails,
 	handleStripeWebhook,
 	runAutoTopups,
 	updateAutoTopup,
+	updateBillingDetails,
 } from "./services/payments";
 import { getBalance } from "./services/wallet";
 import {
 	createTestDb,
+	outbox,
 	prepareDatabase,
 	resetDatabase,
 	TEST_CREDENTIALS_KEY,
 	TEST_USER,
+	testMail,
 } from "./testing";
 
 /**
@@ -55,11 +59,41 @@ function fake<T>(name: string, impl: (...args: never[]) => T) {
 	};
 }
 
+/** The fake Stripe customer's invoice fields, as the API last saved them. */
+let customer: {
+	name?: string;
+	email?: string;
+	address?: Record<string, string>;
+} = {};
+let taxIds: { id: string; value: string; type: string }[] = [];
 let piCreate: (...args: never[]) => unknown = () => ({});
 let piRetrieve: (...args: never[]) => unknown = () => ({});
 Object.assign(stripe.customers, {
 	create: fake("customers.create", () => ({ id: "cus_123" })),
-	update: fake("customers.update", () => ({ id: "cus_123" })),
+	update: fake("customers.update", (_id: never, params: never) => {
+		customer = { ...customer, ...(params as typeof customer) };
+		return { id: "cus_123" };
+	}),
+	retrieve: fake("customers.retrieve", () => ({
+		id: "cus_123",
+		...customer,
+		tax_ids: {
+			data: taxIds.map((t) => ({ ...t, verification: { status: "pending" } })),
+		},
+	})),
+	listTaxIds: fake("customers.listTaxIds", () => ({ data: taxIds })),
+	createTaxId: fake(
+		"customers.createTaxId",
+		(_id: never, params: { type: string; value: string }) => {
+			const t = { id: `txi_${taxIds.length + 1}`, ...params };
+			taxIds.push(t);
+			return t;
+		},
+	),
+	deleteTaxId: fake("customers.deleteTaxId", (_id: never, taxId: string) => {
+		taxIds = taxIds.filter((t) => t.id !== taxId);
+		return { id: taxId, deleted: true };
+	}),
 });
 Object.assign(stripe.checkout.sessions, {
 	create: fake("checkout.sessions.create", () => ({
@@ -89,6 +123,7 @@ const svc: Services = {
 		credentialsKey: TEST_CREDENTIALS_KEY,
 		stripe: { client: stripe, webhookSecret: WEBHOOK_SECRET },
 	},
+	mail: testMail,
 };
 
 const user = { id: TEST_USER, email: "test@example.com", name: "Test" };
@@ -127,6 +162,8 @@ beforeAll(() => prepareDatabase(db));
 beforeEach(async () => {
 	await resetDatabase(db);
 	for (const k of Object.keys(calls)) delete calls[k];
+	customer = {};
+	taxIds = [];
 	piRetrieve = () => ({
 		id: "pi_checkout",
 		setup_future_usage: null,
@@ -287,6 +324,10 @@ describe("auto top-up", () => {
 			.where(eq(wallet.userId, TEST_USER));
 		expect(w?.autoTopupEnabled).toBe(false);
 		expect(w?.autoTopupError).toContain("declined");
+		expect(outbox).toHaveLength(1);
+		expect(outbox[0]?.to).toBe("test@example.com");
+		expect(outbox[0]?.subject).toBe("Auto top-up failed and was turned off");
+		expect(outbox[0]?.text).toContain("Your card was declined.");
 	});
 
 	test("cannot be enabled without a saved card", async () => {
@@ -297,5 +338,56 @@ describe("auto top-up", () => {
 				amountUsd: 25,
 			}),
 		).rejects.toThrow(/Save a card/);
+	});
+});
+
+describe("invoice details", () => {
+	const details = (country: string, taxId: string | null) => ({
+		name: "Acme B.V.",
+		email: "billing@acme.test",
+		address: {
+			line1: "Keizersgracht 1",
+			line2: "",
+			city: "Amsterdam",
+			postalCode: "1015 CJ",
+			state: "",
+			country,
+		},
+		taxId,
+	});
+
+	test("go to the account's Stripe customer with one VAT number", async () => {
+		expect((await getBillingDetails(svc, TEST_USER)).details).toBeNull();
+
+		const saved = await updateBillingDetails(
+			svc,
+			user,
+			details("NL", "nl 1234.56.789 B01"),
+		);
+		expect(saved.details).toMatchObject({
+			name: "Acme B.V.",
+			email: "billing@acme.test",
+			address: { city: "Amsterdam", postalCode: "1015 CJ", country: "NL" },
+			taxId: "NL123456789B01",
+			taxIdStatus: "pending",
+		});
+		expect(firstArg("customers.create")).toMatchObject({ email: user.email });
+		const registered = () => taxIds.map((t) => `${t.type}:${t.value}`);
+		expect(registered()).toEqual(["eu_vat:NL123456789B01"]);
+
+		// The same number again isn't re-registered; a new one replaces it.
+		await updateBillingDetails(svc, user, details("NL", "NL123456789B01"));
+		expect(calls["customers.createTaxId"]).toHaveLength(1);
+		await updateBillingDetails(svc, user, details("GB", "GB123456789"));
+		expect(registered()).toEqual(["gb_vat:GB123456789"]);
+		await updateBillingDetails(svc, user, details("GB", null));
+		expect(taxIds).toEqual([]);
+	});
+
+	test("refuses a VAT number from a country without one", async () => {
+		await expect(
+			updateBillingDetails(svc, user, details("US", "12-3456789")),
+		).rejects.toThrow(/aren't supported/);
+		expect(calls["customers.create"]).toBeUndefined();
 	});
 });

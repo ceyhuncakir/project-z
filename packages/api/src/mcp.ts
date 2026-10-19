@@ -10,6 +10,8 @@ import {
 	PROVIDERS,
 	type ProviderId,
 } from "@switchyard/cloud";
+import { wallet } from "@switchyard/db/schema/app";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 import type { Actor, ApiKeyRecord, Services } from "./context";
@@ -22,10 +24,12 @@ import {
 	sizeLlm,
 } from "./services/catalog";
 import { workingAccounts } from "./services/connections";
+import { getGuardrails, monthSpent } from "./services/guardrails";
 import {
 	createServer,
 	deleteServer,
 	getServer,
+	keepServer,
 	listServers,
 	powerAction,
 	type SerializedServer,
@@ -42,7 +46,9 @@ Typical flow:
 1. create_server with requirements (e.g. min_memory_gb: 4, continents: ["EU"]) — the router picks the cheapest matching plan on the connected accounts and falls back to the next one if a provider is out of capacity. Use search_plans first only if you want to compare options or pin an exact plan_id.
 2. get_server with wait_for_running_seconds: 90 until status is "running" and ipv4 is set.
 3. SSH in as root. If you passed no SSH key, create_server returns a one-time private key: save it to a file with mode 600.
-4. delete_server as soon as the work is done. A server costs money for as long as it exists, stopped or not, with a one-hour minimum.
+4. delete_server as soon as the work is done. A server costs money for as long as it exists, stopped or not, with a one-hour minimum. For work with a known length, pass ttl_hours to create_server so the server deletes itself; keep_server extends it if you need longer.
+
+The account may set guardrails for agents (allowed providers and regions, a price cap per server, a monthly spend limit, a server count, a time limit); get_balance lists them, and a create that breaks one fails with a message saying which. Don't try to work around a guardrail: tell the user.
 
 If a tool says no account is connected, ask the user to connect one at ${svc.config.webUrl}/providers.
 ${gpu ? "\nFor GPUs / LLM serving: call size_llm with the model to get the VRAM it needs, then create_server with min_vram_gb (GPU plans default to Ubuntu 22.04 + CUDA).\n" : ""}
@@ -140,6 +146,7 @@ function agentServer(s: SerializedServer) {
 		fees_so_far: formatUsd(s.totalFeeMicros, { precise: true }),
 		sandbox: s.sandbox || undefined,
 		error: s.errorMessage ?? undefined,
+		deletes_at: s.expiresAt ?? undefined,
 		created_at: s.createdAt,
 	};
 }
@@ -159,7 +166,13 @@ async function run(fn: () => Promise<unknown>): Promise<CallToolResult> {
 }
 
 export function createMcpServer(svc: Services, key: ApiKeyRecord) {
-	const actor: Actor = { userId: key.userId, apiKeyId: key.id, via: "mcp" };
+	const actor: Actor = {
+		userId: key.userId,
+		apiKeyId: key.id,
+		via: "mcp",
+		memberId: null,
+		role: "member",
+	};
 	const mcp = new McpServer(
 		{ name: "hessianlabs", title: "HessianLabs", version: "1.0.0" },
 		{ instructions: instructions(svc) },
@@ -375,6 +388,15 @@ export function createMcpServer(svc: Services, key: ApiKeyRecord) {
 					.optional()
 					.describe("cloud-init config or shell script run on first boot"),
 				labels: z.record(z.string(), z.string()).optional(),
+				ttl_hours: z
+					.number()
+					.int()
+					.min(1)
+					.max(720)
+					.optional()
+					.describe(
+						"Delete the server after this many hours unless keep_server extends it. Accounts may enforce a maximum.",
+					),
 				wait_for_running_seconds: z
 					.number()
 					.min(0)
@@ -403,6 +425,7 @@ export function createMcpServer(svc: Services, key: ApiKeyRecord) {
 					sshPublicKeys: args.ssh_public_keys,
 					userData: args.user_data,
 					labels: args.labels,
+					ttlHours: args.ttl_hours,
 				});
 				const current = args.wait_for_running_seconds
 					? await getServer(svc, actor.userId, res.server.id, {
@@ -510,6 +533,34 @@ export function createMcpServer(svc: Services, key: ApiKeyRecord) {
 	);
 
 	mcp.registerTool(
+		"keep_server",
+		{
+			title: "Keep server",
+			description:
+				"Move a server's time limit to hours from now, so it isn't deleted yet. Call it before deletes_at passes when the work needs longer.",
+			inputSchema: {
+				id: z.string(),
+				hours: z
+					.number()
+					.int()
+					.min(1)
+					.max(720)
+					.describe("New time limit, counted from now"),
+			},
+			annotations: {
+				readOnlyHint: false,
+				destructiveHint: false,
+				idempotentHint: true,
+				openWorldHint: false,
+			},
+		},
+		(args) =>
+			run(async () =>
+				agentServer(await keepServer(svc, actor, args.id, args.hours)),
+			),
+	);
+
+	mcp.registerTool(
 		"get_balance",
 		{
 			title: "Get balance",
@@ -519,10 +570,20 @@ export function createMcpServer(svc: Services, key: ApiKeyRecord) {
 		},
 		() =>
 			run(async () => {
-				const [balance, burn] = await Promise.all([
+				const [balance, burn, limits, [w]] = await Promise.all([
 					getBalance(svc.db, actor.userId),
 					burnRate(svc.db, actor.userId),
+					getGuardrails(svc.db, actor.userId),
+					svc.db
+						.select({
+							monthSpentMicros: wallet.monthSpentMicros,
+							monthStartedAt: wallet.monthStartedAt,
+						})
+						.from(wallet)
+						.where(eq(wallet.userId, actor.userId)),
 				]);
+				const usd = (micros: number | null) =>
+					micros === null ? null : formatUsd(micros, { precise: true });
 				return {
 					balance: formatUsd(balance),
 					fee_per_hour: formatUsd(burn.feeMicros, { precise: true }),
@@ -539,6 +600,16 @@ export function createMcpServer(svc: Services, key: ApiKeyRecord) {
 								? null
 								: formatUsd(key.spendLimitMicros),
 						max_servers: key.maxServers,
+					},
+					guardrails: {
+						spent_at_providers_this_month: formatUsd(w ? monthSpent(w) : 0),
+						monthly_spend_limit: usd(limits.monthlySpendLimitMicros),
+						max_servers: limits.maxServers,
+						max_price_per_hour: usd(limits.maxHourlyPriceMicros),
+						allowed_providers: limits.allowedProviders,
+						allowed_continents: limits.allowedContinents,
+						gpu_allowed: limits.allowGpu,
+						time_limit_hours: limits.defaultTtlHours,
 					},
 				};
 			}),

@@ -8,6 +8,7 @@ import {
 import { and, eq, isNotNull, notInArray, sql } from "drizzle-orm";
 
 import type { Services } from "../context";
+import { addMonthSpend } from "./guardrails";
 import { CLOSED } from "./statuses";
 
 type ServerRow = typeof server.$inferSelect;
@@ -92,6 +93,13 @@ export async function chargeUsage(
 			await tx
 				.update(wallet)
 				.set({ balanceMicros: sql`${wallet.balanceMicros} - ${fee}` })
+				.where(eq(wallet.userId, srv.userId));
+		}
+		// The account's monthly guardrail counts every server's provider cost.
+		if (cost > 0) {
+			await tx
+				.update(wallet)
+				.set(addMonthSpend(cost, until))
 				.where(eq(wallet.userId, srv.userId));
 		}
 		// Spend limits guard what an agent spends at the provider, not just the fee.

@@ -7,6 +7,8 @@ import { sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Client as PgClient } from "pg";
 
+import type { Email } from "./context";
+
 /** Shared Postgres setup for integration tests. */
 
 const TEST_URL =
@@ -37,6 +39,12 @@ const SANDBOX_CREDENTIALS: Record<string, Record<string, string>> = {
 export const sandboxCredentials = (provider: string) =>
 	SANDBOX_CREDENTIALS[provider] ?? { token: "sandbox-token-1234" };
 
+/** Every email the services sent since the last resetDatabase. */
+export const outbox: Email[] = [];
+export const testMail = async (email: Email) => {
+	outbox.push(email);
+};
+
 export function createTestDb() {
 	return createDb({ DATABASE_URL: TEST_URL });
 }
@@ -62,8 +70,9 @@ export async function prepareDatabase(db: TestDb) {
 
 export async function resetDatabase(db: TestDb) {
 	await db.execute(
-		sql`truncate table "user", wallet, credit_transaction, api_key, ssh_key, provider_account, server, activity cascade`,
+		sql`truncate table "user", wallet, credit_transaction, api_key, ssh_key, provider_account, server, activity, notification_settings, guardrails, team_member, team_invitation, security_event cascade`,
 	);
+	outbox.length = 0;
 	await db
 		.insert(user)
 		.values({ id: TEST_USER, name: "Test", email: "test@example.com" });

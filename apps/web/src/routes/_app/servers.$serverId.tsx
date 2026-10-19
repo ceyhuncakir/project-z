@@ -10,6 +10,7 @@ import {
 	DialogTitle,
 } from "@switchyard/ui/components/dialog";
 import { Input } from "@switchyard/ui/components/input";
+import { NativeSelect } from "@switchyard/ui/components/native-select";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
@@ -177,6 +178,13 @@ function ServerPage() {
 					{s.providerName} account; manage or delete it there.
 				</p>
 			)}
+			{live && s.expiresAt && (
+				<p className="mb-6 border border-warn/40 bg-warn/10 px-4 py-3 text-[13px]">
+					Deleted automatically {timeAgo(s.expiresAt)} (
+					{new Date(s.expiresAt).toLocaleString()}) unless someone keeps it.
+					Change it under Time limit.
+				</p>
+			)}
 			{s.status === "error" && s.errorMessage && (
 				<p className="mb-6 border border-destructive/40 bg-destructive/10 px-4 py-3 font-mono text-[12px]">
 					{s.errorMessage}
@@ -262,6 +270,15 @@ function ServerPage() {
 								"Dashboard"
 							)}
 						</Row>
+						{live && s.status !== "deleting" && (
+							<Row label="Time limit">
+								<TimeLimit
+									id={s.id}
+									expiresAt={s.expiresAt}
+									onChanged={refresh}
+								/>
+							</Row>
+						)}
 					</dl>
 				</Panel>
 				<Panel title="Specs">
@@ -320,5 +337,71 @@ function ServerPage() {
 				</DialogContent>
 			</Dialog>
 		</>
+	);
+}
+
+const LIMITS = [
+	{ hours: 1, label: "1 hour" },
+	{ hours: 4, label: "4 hours" },
+	{ hours: 24, label: "1 day" },
+	{ hours: 72, label: "3 days" },
+	{ hours: 168, label: "1 week" },
+];
+
+/** Shows when the server deletes itself; set it, move it, or remove it. */
+function TimeLimit({
+	id,
+	expiresAt,
+	onChanged,
+}: {
+	id: string;
+	expiresAt: Date | null;
+	onChanged: () => void;
+}) {
+	const keep = useMutation(
+		orpc.servers.keep.mutationOptions({
+			onSuccess: (s) => {
+				toast.success(
+					s.expiresAt
+						? `${s.name} is deleted ${timeAgo(s.expiresAt)}`
+						: `${s.name} has no time limit`,
+				);
+				onChanged();
+			},
+			onError: (e) => toast.error(e.message),
+		}),
+	);
+	return (
+		<div className="flex flex-wrap items-center gap-2">
+			<span className={expiresAt ? "" : "text-muted-foreground"}>
+				{expiresAt ? `Deleted ${timeAgo(expiresAt)}` : "None"}
+			</span>
+			<NativeSelect
+				aria-label={expiresAt ? "Move the time limit" : "Set a time limit"}
+				className="h-7 w-36 text-[12px]"
+				value=""
+				disabled={keep.isPending}
+				onChange={(e) =>
+					e.target.value && keep.mutate({ id, hours: Number(e.target.value) })
+				}
+			>
+				<option value="">{expiresAt ? "Delete in…" : "Set a limit…"}</option>
+				{LIMITS.map((l) => (
+					<option key={l.hours} value={l.hours}>
+						{l.label} from now
+					</option>
+				))}
+			</NativeSelect>
+			{expiresAt && (
+				<Button
+					variant="ghost"
+					size="xs"
+					disabled={keep.isPending}
+					onClick={() => keep.mutate({ id, hours: null })}
+				>
+					Remove limit
+				</Button>
+			)}
+		</div>
 	);
 }

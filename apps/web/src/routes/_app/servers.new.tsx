@@ -97,6 +97,8 @@ function NewServerPage() {
 		precision: "",
 	});
 	const [name, setName] = useState("");
+	/** Hours until it deletes itself; "" for no time limit. */
+	const [ttlHours, setTtlHours] = useState("");
 	const [selectedKeys, setSelectedKeys] = useState<string[] | null>(null);
 	const [pastedKey, setPastedKey] = useState("");
 	const [userData, setUserData] = useState("");
@@ -210,6 +212,7 @@ function NewServerPage() {
 			sshPublicKeys: keys,
 			sshKeyIds: selectedKeys ?? undefined,
 			userData: userData.trim() || undefined,
+			ttlHours: ttlHours ? Number(ttlHours) : undefined,
 		});
 	}
 
@@ -611,6 +614,23 @@ function NewServerPage() {
 									value={name}
 									onChange={(e) => setName(e.target.value)}
 								/>
+							</Field>
+							<Field
+								label="Time limit"
+								hint="Deleted automatically after this long, unless someone keeps it."
+							>
+								<NativeSelect
+									aria-label="Time limit"
+									value={ttlHours}
+									onChange={(e) => setTtlHours(e.target.value)}
+								>
+									<option value="">None</option>
+									<option value="1">1 hour</option>
+									<option value="4">4 hours</option>
+									<option value="24">1 day</option>
+									<option value="72">3 days</option>
+									<option value="168">1 week</option>
+								</NativeSelect>
 							</Field>
 						</div>
 					</Panel>

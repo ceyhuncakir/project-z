@@ -51,6 +51,16 @@ import {
 	type ProviderAccountRow,
 	workingAccounts,
 } from "./connections";
+import {
+	allowedCandidates,
+	applyGuardrails,
+	checkAccountLimits,
+	type Guardrails,
+	getGuardrails,
+	isAgent,
+	timeLimitHours,
+} from "./guardrails";
+import { notify } from "./notifications";
 import { listSshKeys } from "./ssh-keys";
 import { ACTIVE, CLOSED, SYNCABLE } from "./statuses";
 import { ensureWallet } from "./wallet";
@@ -58,6 +68,7 @@ import { ensureWallet } from "./wallet";
 type ServerRow = typeof server.$inferSelect;
 
 const MAX_ATTEMPTS = 3;
+const HOUR = 3_600_000;
 
 const system = (userId: string): Actor => ({
 	userId,
@@ -86,6 +97,11 @@ export const createServerInputSchema = z.object({
 	sshKeyIds: z.array(z.string()).max(10).optional(),
 	userData: z.string().max(32_000).optional(),
 	labels: z.record(z.string(), z.string().max(63)).optional(),
+	/**
+	 * Delete the server after this many hours unless someone keeps it. Agents
+	 * get the account's time limit by default and may only ask for less.
+	 */
+	ttlHours: z.number().int().min(1).max(720).optional(),
 });
 
 export type CreateServerInput = z.input<typeof createServerInputSchema>;
@@ -117,6 +133,7 @@ export function serializeServer(s: ServerRow) {
 		labels: s.labels,
 		errorMessage: s.errorMessage,
 		apiKeyId: s.apiKeyId,
+		expiresAt: s.expiresAt,
 		createdAt: s.createdAt,
 		deletedAt: s.deletedAt,
 	};
@@ -249,10 +266,15 @@ async function reserveServer(
 	svc: Services,
 	actor: Actor,
 	row: typeof server.$inferInsert,
+	limits: Guardrails | null,
 ) {
 	await svc.db.transaction(async (tx) => {
 		const [w] = await tx
-			.select({ balance: wallet.balanceMicros })
+			.select({
+				balance: wallet.balanceMicros,
+				monthSpentMicros: wallet.monthSpentMicros,
+				monthStartedAt: wallet.monthStartedAt,
+			})
 			.from(wallet)
 			.where(eq(wallet.userId, actor.userId))
 			.for("update");
@@ -273,6 +295,15 @@ async function reserveServer(
 				.where(eq(apiKey.id, actor.apiKeyId))
 				.for("update");
 			if (key) await checkKeyLimits(tx, key, row.priceHourlyMicros);
+		}
+		if (limits && w) {
+			await checkAccountLimits(
+				tx,
+				actor.userId,
+				limits,
+				w,
+				row.priceHourlyMicros,
+			);
 		}
 		await tx.insert(server).values(row);
 	});
@@ -309,9 +340,44 @@ export async function createServer(
 	rawInput: CreateServerInput,
 ) {
 	const input = createServerInputSchema.parse(rawInput);
+	const gpuImage = Boolean(IMAGES.find((i) => i.id === input.image)?.gpu);
+	const limits = isAgent(actor)
+		? await getGuardrails(svc.db, actor.userId)
+		: null;
+	// The router only searches what agents may use; an exact plan is checked below.
+	const narrowed =
+		limits && applyGuardrails(input.requirements, limits, { gpuImage });
+	const routed =
+		narrowed && !input.planId ? { ...input, requirements: narrowed } : input;
 	const accounts = await workingAccounts(svc.db, actor.userId);
-	let candidates = await resolveCandidates(svc, input, [...accounts.keys()]);
-	if (IMAGES.find((i) => i.id === input.image)?.gpu) {
+	const connected = [...accounts.keys()];
+	let candidates = await resolveCandidates(svc, routed, connected).catch(
+		async (err) => {
+			// Nothing left after the guardrails: say which one stood in the way,
+			// trying without the price cap first, then without any of them.
+			if (limits && routed !== input) {
+				for (const relaxed of [
+					{ ...limits, maxHourlyPriceMicros: null },
+					null,
+				]) {
+					const retry = relaxed
+						? {
+								...input,
+								requirements: applyGuardrails(input.requirements, relaxed, {
+									gpuImage,
+								}),
+							}
+						: input;
+					const found = await resolveCandidates(svc, retry, connected).catch(
+						() => [],
+					);
+					if (found.length) allowedCandidates(found, limits);
+				}
+			}
+			throw err;
+		},
+	);
+	if (gpuImage) {
 		candidates = candidates.filter((c) => c.plan.gpu);
 		if (!candidates.length) {
 			throw new ORPCError("BAD_REQUEST", {
@@ -319,6 +385,10 @@ export async function createServer(
 			});
 		}
 	}
+	if (limits) candidates = allowedCandidates(candidates, limits);
+	const ttlHours = limits
+		? timeLimitHours(actor, limits, input.ttlHours)
+		: (input.ttlHours ?? null);
 	const imageFor = (c: Candidate) =>
 		input.image ?? (c.plan.gpu ? DEFAULT_GPU_IMAGE : DEFAULT_IMAGE);
 	const first = candidates[0] as Candidate;
@@ -365,15 +435,21 @@ export async function createServer(
 	};
 
 	await ensureWallet(svc.db, actor.userId);
-	await reserveServer(svc, actor, {
-		id,
-		userId: actor.userId,
-		apiKeyId: actor.apiKeyId,
-		name,
-		labels: input.labels ?? {},
-		status: "provisioning",
-		...snapshotFields(first),
-	});
+	await reserveServer(
+		svc,
+		actor,
+		{
+			id,
+			userId: actor.userId,
+			apiKeyId: actor.apiKeyId,
+			name,
+			labels: input.labels ?? {},
+			status: "provisioning",
+			expiresAt: ttlHours ? new Date(Date.now() + ttlHours * HOUR) : null,
+			...snapshotFields(first),
+		},
+		limits,
+	);
 
 	const attempts: { planId: string; regionId: string; error: string }[] = [];
 	let row: ServerRow | undefined;
@@ -551,6 +627,11 @@ async function checkAccount(
 		action: "provider.failed",
 		message: `${name} rejected the saved credentials. Its servers are no longer managed or billed by HessianLabs.`,
 	});
+	// The servers keep running (and costing) at the provider, so say so.
+	await notify(svc, account.userId, "providerProblems", {
+		subject: `${name} stopped accepting your credentials`,
+		text: `${name} rejected the credentials saved in HessianLabs, so HessianLabs no longer manages or bills your servers there. They keep running in your ${name} account, and ${name} keeps billing you for them, until you delete them there.\n\nReconnect ${name} with new credentials: ${svc.config.webUrl}/providers/${account.provider}`,
+	});
 }
 
 /**
@@ -713,6 +794,51 @@ export async function deleteServer(svc: Services, actor: Actor, id: string) {
 		});
 	}
 	return destroyServer(svc, actor, row);
+}
+
+/**
+ * Moves a server's time limit to `hours` from now, or removes it (null).
+ * Agents in an account with a time limit may extend by up to that limit,
+ * as often as they like, but never remove it.
+ */
+export async function keepServer(
+	svc: Services,
+	actor: Actor,
+	id: string,
+	hours: number | null,
+) {
+	const row = await loadOwned(svc, actor.userId, id);
+	if (row.status === "deleting" || CLOSED.includes(row.status)) {
+		throw new ORPCError("BAD_REQUEST", {
+			message: `Server ${id} is already ${row.status}`,
+		});
+	}
+	if (isAgent(actor)) {
+		const { defaultTtlHours } = await getGuardrails(svc.db, actor.userId);
+		if (
+			defaultTtlHours !== null &&
+			(hours === null || hours > defaultTtlHours)
+		) {
+			throw new ORPCError("FORBIDDEN", {
+				message: `Agents can extend a server by at most ${defaultTtlHours} hours at a time in this account.`,
+			});
+		}
+	}
+	const expiresAt = hours === null ? null : new Date(Date.now() + hours * HOUR);
+	const [updated] = await svc.db
+		.update(server)
+		.set({ expiresAt, expiryWarnedAt: null })
+		.where(eq(server.id, row.id))
+		.returning();
+	await logActivity(svc.db, actor, {
+		action: "server.keep",
+		serverId: row.id,
+		message:
+			hours === null
+				? `Removed the time limit on ${row.name}`
+				: `${row.name} will be deleted in ${hours} hours unless kept again`,
+	});
+	return serializeServer(updated ?? row);
 }
 
 const ALLOWED: Record<PowerAction, ServerRow["status"][]> = {

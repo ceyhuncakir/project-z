@@ -23,6 +23,9 @@ const userId = () =>
 		.notNull()
 		.references(() => user.id, { onDelete: "cascade" });
 
+/** Low-balance alert threshold for accounts that haven't picked one. */
+export const DEFAULT_LOW_BALANCE_MICROS = 5_000_000;
+
 export const wallet = pgTable("wallet", {
 	userId: text("user_id")
 		.primaryKey()
@@ -47,6 +50,23 @@ export const wallet = pgTable("wallet", {
 		withTimezone: true,
 	}),
 	autoTopupError: text("auto_topup_error"),
+	/**
+	 * Set while the balance is at or above the low-balance threshold and
+	 * cleared when the alert goes out, so each drop below it emails once.
+	 */
+	lowBalanceAlertArmed: boolean("low_balance_alert_armed")
+		.notNull()
+		.default(false),
+	/** The owner and admins are emailed when the balance drops below this. */
+	lowBalanceThresholdMicros: micros("low_balance_threshold_micros")
+		.notNull()
+		.default(DEFAULT_LOW_BALANCE_MICROS),
+	/**
+	 * Estimated provider cost (list price) of every server since
+	 * monthStartedAt, the start of the current UTC month: the monthly guardrail.
+	 */
+	monthSpentMicros: micros("month_spent_micros").notNull().default(0),
+	monthStartedAt: timestamp("month_started_at", { withTimezone: true }),
 	createdAt: createdAt(),
 	updatedAt: timestamp("updated_at", { withTimezone: true })
 		.defaultNow()
@@ -86,6 +106,122 @@ export const creditTransaction = pgTable(
 		index("credit_tx_user_created_idx").on(t.userId, t.createdAt),
 		uniqueIndex("credit_tx_server_period_idx").on(t.serverId, t.periodStart),
 	],
+);
+
+/**
+ * Which emails a user gets. A user without a row gets every one. Account
+ * emails go to the account's owner and admins. Security emails (password
+ * resets, email changes, team invitations) always go out.
+ */
+export const notificationSettings = pgTable("notification_settings", {
+	userId: text("user_id")
+		.primaryKey()
+		.references(() => user.id, { onDelete: "cascade" }),
+	/** A connected cloud account stopped accepting its credentials. */
+	providerProblems: boolean("provider_problems").notNull().default(true),
+	/** The saved card was declined and auto top-up turned itself off. */
+	autoTopupFailed: boolean("auto_topup_failed").notNull().default(true),
+	lowBalance: boolean("low_balance").notNull().default(true),
+	/** A server has run longer than the account's long-running threshold. */
+	longRunning: boolean("long_running").notNull().default(true),
+	/** A server's time limit is about to end, or ended and it was deleted. */
+	serverExpiry: boolean("server_expiry").notNull().default(true),
+	/** Someone signed in to this user from a browser or device not seen before. */
+	newSignIn: boolean("new_sign_in").notNull().default(true),
+	updatedAt: timestamp("updated_at", { withTimezone: true })
+		.defaultNow()
+		.$onUpdate(() => new Date())
+		.notNull(),
+});
+
+/**
+ * What API keys and MCP agents may create in an account. Null means no
+ * limit; an account without a row has none. People in the dashboard aren't
+ * limited.
+ */
+export const guardrails = pgTable("guardrails", {
+	userId: text("user_id")
+		.primaryKey()
+		.references(() => user.id, { onDelete: "cascade" }),
+	/** Cap on wallet.monthSpentMicros plus an hour of what's running. */
+	monthlySpendLimitMicros: micros("monthly_spend_limit_micros"),
+	/** Active servers in the account, however they were created. */
+	maxServers: integer("max_servers"),
+	/** Per server, at the provider's list price. */
+	maxHourlyPriceMicros: micros("max_hourly_price_micros"),
+	allowedProviders: text("allowed_providers").array(),
+	allowedContinents: text("allowed_continents").array(),
+	allowGpu: boolean("allow_gpu").notNull().default(true),
+	/** Agent-created servers get this time limit unless the request sets one. */
+	defaultTtlHours: integer("default_ttl_hours"),
+	/** Email about servers running longer than this, once each. Null = never. */
+	longRunningHours: integer("long_running_hours").default(24),
+	updatedAt: timestamp("updated_at", { withTimezone: true })
+		.defaultNow()
+		.$onUpdate(() => new Date())
+		.notNull(),
+});
+
+export const teamRole = pgEnum("team_role", ["admin", "member"]);
+
+/**
+ * People invited into another user's account. They share its credits, cloud
+ * accounts, servers and keys. The owner (the account's own user) isn't listed.
+ */
+export const teamMember = pgTable(
+	"team_member",
+	{
+		id: text("id").primaryKey(),
+		/** The account, identified by its owner's user id. */
+		accountId: text("account_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		userId: userId(),
+		role: teamRole("role").notNull().default("member"),
+		createdAt: createdAt(),
+	},
+	(t) => [
+		uniqueIndex("team_member_account_user_idx").on(t.accountId, t.userId),
+		index("team_member_user_idx").on(t.userId),
+	],
+);
+
+export const teamInvitation = pgTable(
+	"team_invitation",
+	{
+		id: text("id").primaryKey(),
+		accountId: text("account_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		/** Lowercased. Only a user signed in with this email can accept. */
+		email: text("email").notNull(),
+		role: teamRole("role").notNull().default("member"),
+		/** SHA-256 of the token in the emailed link. */
+		tokenHash: text("token_hash").notNull().unique(),
+		invitedBy: text("invited_by").references(() => user.id, {
+			onDelete: "set null",
+		}),
+		expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+		createdAt: createdAt(),
+	},
+	(t) => [
+		uniqueIndex("team_invitation_account_email_idx").on(t.accountId, t.email),
+	],
+);
+
+/** Sign-ins and changes to how a user signs in, for Settings → Security. */
+export const securityEvent = pgTable(
+	"security_event",
+	{
+		id: text("id").primaryKey(),
+		userId: userId(),
+		action: text("action").notNull(),
+		message: text("message").notNull(),
+		ipAddress: text("ip_address"),
+		userAgent: text("user_agent"),
+		createdAt: createdAt(),
+	},
+	(t) => [index("security_event_user_created_idx").on(t.userId, t.createdAt)],
 );
 
 export const apiKey = pgTable(
@@ -212,6 +348,14 @@ export const server = pgTable(
 		/** Last time the provider was asked about this server. */
 		syncedAt: timestamp("synced_at", { withTimezone: true }),
 		suspendedAt: timestamp("suspended_at", { withTimezone: true }),
+		/** Deleted automatically at this time unless someone keeps it. */
+		expiresAt: timestamp("expires_at", { withTimezone: true }),
+		/** The owner and admins were warned the time limit is ending. */
+		expiryWarnedAt: timestamp("expiry_warned_at", { withTimezone: true }),
+		/** The long-running email went out for this server. */
+		longRunningNotifiedAt: timestamp("long_running_notified_at", {
+			withTimezone: true,
+		}),
 		createdAt: createdAt(),
 		updatedAt: timestamp("updated_at", { withTimezone: true })
 			.defaultNow()
@@ -233,6 +377,10 @@ export const activity = pgTable(
 		apiKeyId: text("api_key_id"),
 		/** dashboard | api | mcp | system */
 		actor: text("actor").notNull(),
+		/** Who acted in the dashboard; tells teammates apart in a shared account. */
+		actorUserId: text("actor_user_id").references(() => user.id, {
+			onDelete: "set null",
+		}),
 		action: text("action").notNull(),
 		serverId: text("server_id"),
 		message: text("message").notNull(),

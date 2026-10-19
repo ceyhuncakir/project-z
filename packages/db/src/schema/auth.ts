@@ -1,5 +1,12 @@
 import { defineRelationsPart } from "drizzle-orm";
-import { boolean, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import {
+	boolean,
+	index,
+	integer,
+	pgTable,
+	text,
+	timestamp,
+} from "drizzle-orm/pg-core";
 
 export const user = pgTable("user", {
 	id: text("id").primaryKey(),
@@ -7,6 +14,7 @@ export const user = pgTable("user", {
 	email: text("email").notNull().unique(),
 	emailVerified: boolean("email_verified").default(false).notNull(),
 	image: text("image"),
+	twoFactorEnabled: boolean("two_factor_enabled").default(false).notNull(),
 	createdAt: timestamp("created_at").defaultNow().notNull(),
 	updatedAt: timestamp("updated_at")
 		.defaultNow()
@@ -29,6 +37,10 @@ export const session = pgTable(
 		userId: text("user_id")
 			.notNull()
 			.references(() => user.id, { onDelete: "cascade" }),
+		/** The team account this session acts in; null for the user's own. */
+		activeAccountId: text("active_account_id").references(() => user.id, {
+			onDelete: "set null",
+		}),
 	},
 	(table) => [index("session_userId_idx").on(table.userId)],
 );
@@ -71,6 +83,26 @@ export const verification = pgTable(
 			.notNull(),
 	},
 	(table) => [index("verification_identifier_idx").on(table.identifier)],
+);
+
+/** Better Auth's two-factor plugin: one TOTP secret and backup codes per user. */
+export const twoFactor = pgTable(
+	"two_factor",
+	{
+		id: text("id").primaryKey(),
+		secret: text("secret").notNull(),
+		backupCodes: text("backup_codes").notNull(),
+		userId: text("user_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		verified: boolean("verified").default(true),
+		failedVerificationCount: integer("failed_verification_count").default(0),
+		lockedUntil: timestamp("locked_until"),
+	},
+	(table) => [
+		index("twoFactor_secret_idx").on(table.secret),
+		index("twoFactor_userId_idx").on(table.userId),
+	],
 );
 
 export const authRelations = defineRelationsPart(

@@ -7,7 +7,8 @@ import type Stripe from "stripe";
 
 import type { Actor, Services } from "../context";
 import { logActivity } from "./activity";
-import { addCredits, ensureWallet, quoteTopup } from "./wallet";
+import { notify } from "./notifications";
+import { addCredits, ensureWallet, getBalance, quoteTopup } from "./wallet";
 
 /**
  * Stripe payments: hosted Checkout for top-ups (credits and fee as separate
@@ -345,6 +346,11 @@ async function recordAutoTopupFailure(
 			message: `Auto top-up failed and was turned off: ${message}`,
 		},
 	);
+	const balance = await getBalance(svc.db, userId);
+	await notify(svc, userId, "autoTopupFailed", {
+		subject: "Auto top-up failed and was turned off",
+		text: `We couldn't charge your saved card: ${message}\n\nAuto top-up is now off, so we won't retry the card. Your balance is ${formatUsd(balance)}; once it runs out your agents can't create new servers, though running ones aren't affected.\n\nAdd credits or update your card: ${svc.config.webUrl}/credits`,
+	});
 }
 
 export async function handleStripeWebhook(
@@ -504,4 +510,143 @@ export async function addTestCredits(
 		.from(wallet)
 		.where(eq(wallet.userId, userId));
 	return { balanceMicros: row?.balance ?? 0 };
+}
+
+const EU_COUNTRIES = [
+	"AT",
+	"BE",
+	"BG",
+	"CY",
+	"CZ",
+	"DE",
+	"DK",
+	"EE",
+	"ES",
+	"FI",
+	"FR",
+	"GR",
+	"HR",
+	"HU",
+	"IE",
+	"IT",
+	"LT",
+	"LU",
+	"LV",
+	"MT",
+	"NL",
+	"PL",
+	"PT",
+	"RO",
+	"SE",
+	"SI",
+	"SK",
+];
+
+/** The Stripe tax ID type for a billing country, or null if we don't take one. */
+export function taxIdTypeFor(country: string) {
+	if (EU_COUNTRIES.includes(country)) return "eu_vat" as const;
+	return (
+		({ GB: "gb_vat", CH: "ch_vat", NO: "no_vat" } as const)[
+			country as "GB" | "CH" | "NO"
+		] ?? null
+	);
+}
+
+export interface BillingDetails {
+	/** Company or person printed on receipts and invoices. */
+	name: string;
+	/** Where Stripe sends receipts. */
+	email: string;
+	address: {
+		line1: string;
+		line2: string;
+		city: string;
+		postalCode: string;
+		state: string;
+		/** ISO 3166-1 alpha-2 */
+		country: string;
+	};
+	taxId: string | null;
+}
+
+/** Invoice details from the account's Stripe customer; empty before the first save. */
+export async function getBillingDetails(svc: Services, accountId: string) {
+	if (!svc.config.stripe) return { paymentsEnabled: false, details: null };
+	const { client } = svc.config.stripe;
+	const w = await loadWallet(svc.db, accountId);
+	if (!w.stripeCustomerId) return { paymentsEnabled: true, details: null };
+	const customerId = w.stripeCustomerId;
+	const customer = await stripeCall("load customer", () =>
+		client.customers.retrieve(customerId, { expand: ["tax_ids"] }),
+	);
+	if (customer.deleted) return { paymentsEnabled: true, details: null };
+	const tax = customer.tax_ids?.data[0];
+	return {
+		paymentsEnabled: true,
+		details: {
+			name: customer.name ?? "",
+			email: customer.email ?? "",
+			address: {
+				line1: customer.address?.line1 ?? "",
+				line2: customer.address?.line2 ?? "",
+				city: customer.address?.city ?? "",
+				postalCode: customer.address?.postal_code ?? "",
+				state: customer.address?.state ?? "",
+				country: customer.address?.country ?? "",
+			},
+			taxId: tax?.value ?? null,
+			/** Stripe checks EU VAT numbers with VIES in the background. */
+			taxIdStatus: (tax?.verification?.status ?? null) as string | null,
+		},
+	};
+}
+
+export async function updateBillingDetails(
+	svc: Services,
+	owner: { id: string; email: string; name: string },
+	input: BillingDetails,
+) {
+	const { client } = requireStripe(svc);
+	const taxId = input.taxId?.replace(/[\s.-]/g, "").toUpperCase() || null;
+	const taxType = taxIdTypeFor(input.address.country);
+	if (taxId && !taxType) {
+		throw new ORPCError("BAD_REQUEST", {
+			message: `VAT numbers from ${input.address.country || "that country"} aren't supported yet. Leave the field empty.`,
+		});
+	}
+	const customerId = await ensureCustomer(svc, owner);
+	await stripeCall("update customer", () =>
+		client.customers.update(customerId, {
+			name: input.name || undefined,
+			email: input.email || undefined,
+			address: {
+				line1: input.address.line1,
+				line2: input.address.line2,
+				city: input.address.city,
+				postal_code: input.address.postalCode,
+				state: input.address.state,
+				country: input.address.country,
+			},
+		}),
+	);
+	// One tax ID per account: replace it when it changed.
+	const existing = await stripeCall("list tax IDs", () =>
+		client.customers.listTaxIds(customerId),
+	);
+	if ((existing.data[0]?.value ?? null) !== taxId) {
+		for (const t of existing.data) {
+			await stripeCall("remove tax ID", () =>
+				client.customers.deleteTaxId(customerId, t.id),
+			);
+		}
+		if (taxId && taxType) {
+			await stripeCall("add tax ID", () =>
+				client.customers.createTaxId(customerId, {
+					type: taxType,
+					value: taxId,
+				}),
+			);
+		}
+	}
+	return getBillingDetails(svc, owner.id);
 }

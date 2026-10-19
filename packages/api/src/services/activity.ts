@@ -1,6 +1,7 @@
 import { type Executor, newId } from "@switchyard/db";
 import { activity } from "@switchyard/db/schema/app";
-import { and, desc, eq, lt } from "drizzle-orm";
+import { user } from "@switchyard/db/schema/auth";
+import { and, desc, eq, getColumns, lt } from "drizzle-orm";
 
 import type { Actor } from "../context";
 
@@ -19,18 +20,21 @@ export async function logActivity(
 		userId: actor.userId,
 		apiKeyId: actor.apiKeyId,
 		actor: actor.via,
+		actorUserId: actor.memberId ?? null,
 		...entry,
 	});
 }
 
+/** Newest first, with the name of the teammate behind dashboard actions. */
 export async function listActivity(
 	db: Executor,
 	userId: string,
 	opts: { limit?: number; before?: Date; serverId?: string } = {},
 ) {
 	return db
-		.select()
+		.select({ ...getColumns(activity), actorName: user.name })
 		.from(activity)
+		.leftJoin(user, eq(user.id, activity.actorUserId))
 		.where(
 			and(
 				eq(activity.userId, userId),

@@ -33,6 +33,7 @@
 		"react-dom": "^19.3.0",
 		"sonner": "catalog:",
 		"tailwindcss": "catalog:",
+		"uqr": "0.1.2",
 		"varlock": "catalog:",
 		"zod": "catalog:"
 	},

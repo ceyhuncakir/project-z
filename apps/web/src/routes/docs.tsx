@@ -51,8 +51,13 @@ const TOOLS: [string, string, string][] = [
 		"id",
 	],
 	[
+		"keep_server",
+		"Move a server's time limit (from create_server's ttl_hours) to hours from now.",
+		"id, hours",
+	],
+	[
 		"get_balance",
-		"Credits, fee per hour, runway, server spend at providers, key limits.",
+		"Credits, fee per hour, runway, server spend at providers, key limits and the account's guardrails.",
 		"—",
 	],
 	[

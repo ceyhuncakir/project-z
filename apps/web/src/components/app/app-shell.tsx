@@ -9,23 +9,35 @@ import {
 	DropdownMenuTrigger,
 } from "@switchyard/ui/components/dropdown-menu";
 import { cn } from "@switchyard/ui/lib/utils";
-import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
 	ActivityIcon,
+	ArrowLeftIcon,
+	BellIcon,
 	BookOpenIcon,
+	CheckIcon,
 	CloudIcon,
 	CreditCardIcon,
+	DatabaseIcon,
+	GaugeIcon,
 	KeyRoundIcon,
 	LayoutGridIcon,
 	LogOutIcon,
 	MenuIcon,
+	MonitorSmartphoneIcon,
 	PlusIcon,
+	ReceiptIcon,
 	ServerIcon,
+	SettingsIcon,
+	ShieldCheckIcon,
 	TableIcon,
 	TerminalIcon,
+	UserIcon,
+	UsersIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { toast } from "sonner";
 
 import { authClient } from "@/lib/auth-client";
 import { formatUsd } from "@/lib/format";
@@ -45,7 +57,25 @@ const NAV = [
 	{ to: "/activity", label: "Activity", icon: ActivityIcon },
 ] as const;
 
-const SECONDARY = [{ to: "/docs", label: "Docs", icon: BookOpenIcon }] as const;
+/** Replaces NAV in the sidebar on /settings pages: you, then the account you're in. */
+const SETTINGS_YOU = [
+	{ to: "/settings/profile", label: "Profile", icon: UserIcon },
+	{ to: "/settings/security", label: "Security", icon: ShieldCheckIcon },
+	{ to: "/settings/sessions", label: "Sessions", icon: MonitorSmartphoneIcon },
+	{ to: "/settings/notifications", label: "Notifications", icon: BellIcon },
+	{ to: "/settings/privacy", label: "Data & privacy", icon: DatabaseIcon },
+] as const;
+const SETTINGS_ACCOUNT = [
+	{ to: "/settings/team", label: "Team", icon: UsersIcon },
+	{ to: "/settings/guardrails", label: "Guardrails", icon: GaugeIcon },
+	{ to: "/settings/billing", label: "Billing details", icon: ReceiptIcon },
+] as const;
+const SETTINGS_NAV = [...SETTINGS_YOU, ...SETTINGS_ACCOUNT];
+
+const SECONDARY = [
+	{ to: "/settings", label: "Settings", icon: SettingsIcon },
+	{ to: "/docs", label: "Docs", icon: BookOpenIcon },
+] as const;
 
 export function useOverview() {
 	return useQuery(
@@ -53,16 +83,88 @@ export function useOverview() {
 	);
 }
 
-function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+/** Accounts this person can act in, and the one this session uses. */
+export function useAccounts() {
+	return useQuery(orpc.team.accounts.queryOptions());
+}
+
+export function accountName(a: { personal: boolean; ownerName: string }) {
+	return a.personal ? "Your account" : `${a.ownerName}'s account`;
+}
+
+/**
+ * The active account's name, for headings that say whose settings these are,
+ * or mid-sentence ("in your account") with `inSentence`.
+ */
+export function useActiveAccountName(opts: { inSentence?: boolean } = {}) {
+	const { data } = useAccounts();
+	const active = data?.accounts.find(
+		(a) => a.accountId === data.active.accountId,
+	);
+	const name = active ? accountName(active) : "This account";
+	return opts.inSentence && (!active || active.personal)
+		? name.toLowerCase()
+		: name;
+}
+
+function useInSettings() {
+	return useRouterState({
+		select: (s) => s.location.pathname.startsWith("/settings"),
+	});
+}
+
+const navLinkClass =
+	"flex items-center gap-2.5 px-2.5 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground";
+const navLinkActive = { className: "!bg-sidebar-accent !text-foreground" };
+
+function SettingsGroup({
+	title,
+	items,
+}: {
+	title: string;
+	items: readonly (typeof SETTINGS_NAV)[number][];
+}) {
+	return (
+		<div className="space-y-0.5">
+			<p className="label-mono truncate px-2.5 pb-1.5">{title}</p>
+			{items.map(({ to, label, icon: Icon }) => (
+				<Link
+					key={to}
+					to={to}
+					className={navLinkClass}
+					activeProps={navLinkActive}
+				>
+					<Icon className="size-4" />
+					{label}
+				</Link>
+			))}
+		</div>
+	);
+}
+
+function NavLinks() {
+	const inSettings = useInSettings();
+	const account = useActiveAccountName();
+	if (inSettings) {
+		return (
+			<nav className="space-y-5">
+				<Link to="/dashboard" className={navLinkClass}>
+					<ArrowLeftIcon className="size-4" />
+					Back to dashboard
+				</Link>
+				<SettingsGroup title="You" items={SETTINGS_YOU} />
+				<SettingsGroup title={account} items={SETTINGS_ACCOUNT} />
+			</nav>
+		);
+	}
 	return (
 		<nav className="space-y-0.5">
 			{NAV.map(({ to, label, icon: Icon }) => (
 				<Link
 					key={to}
 					to={to}
-					onClick={onNavigate}
-					className="flex items-center gap-2.5 px-2.5 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
-					activeProps={{ className: "!bg-sidebar-accent !text-foreground" }}
+					className={navLinkClass}
+					activeProps={navLinkActive}
 				>
 					<Icon className="size-4" />
 					{label}
@@ -72,10 +174,106 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
 	);
 }
 
+/** "Switch account" items for a dropdown; nothing for people in one account. */
+function AccountSwitchItems() {
+	const navigate = useNavigate();
+	const queryClient = useQueryClient();
+	const accounts = useAccounts();
+	const switchTo = useMutation(
+		orpc.team.switch.mutationOptions({
+			onSuccess: async () => {
+				// Every query is scoped to the account, so start over.
+				await queryClient.invalidateQueries();
+				navigate({ to: "/dashboard" });
+			},
+			onError: (e) => toast.error(e.message),
+		}),
+	);
+	const list = accounts.data?.accounts ?? [];
+	const activeId = accounts.data?.active.accountId;
+	if (list.length < 2) return null;
+	return (
+		<DropdownMenuGroup>
+			<DropdownMenuLabel className="label-mono">
+				Switch account
+			</DropdownMenuLabel>
+			{list.map((a) => (
+				<DropdownMenuItem
+					key={a.accountId}
+					disabled={switchTo.isPending}
+					onClick={() =>
+						a.accountId !== activeId &&
+						switchTo.mutate({ accountId: a.accountId })
+					}
+				>
+					<CheckIcon className={cn(a.accountId !== activeId && "invisible")} />
+					<span className="min-w-0 flex-1 truncate">{accountName(a)}</span>
+					<span className="text-[11px] text-muted-foreground">{a.role}</span>
+				</DropdownMenuItem>
+			))}
+			<DropdownMenuSeparator />
+		</DropdownMenuGroup>
+	);
+}
+
+function signOut(navigate: ReturnType<typeof useNavigate>) {
+	authClient.signOut({
+		fetchOptions: { onSuccess: () => navigate({ to: "/" }) },
+	});
+}
+
+/** The phone menu: the sidebar's menus, the account switcher and sign-out. */
+function MobileNav() {
+	const navigate = useNavigate();
+	const inSettings = useInSettings();
+	return (
+		<DropdownMenu>
+			<DropdownMenuTrigger
+				render={<Button variant="ghost" size="icon-sm" aria-label="Menu" />}
+			>
+				<MenuIcon />
+			</DropdownMenuTrigger>
+			<DropdownMenuContent className="w-52 bg-popover">
+				{inSettings ? (
+					<>
+						<DropdownMenuItem render={<Link to="/dashboard" />}>
+							<ArrowLeftIcon /> Back to dashboard
+						</DropdownMenuItem>
+						<DropdownMenuSeparator />
+						{SETTINGS_NAV.map(({ to, label, icon: Icon }) => (
+							<DropdownMenuItem key={to} render={<Link to={to} />}>
+								<Icon /> {label}
+							</DropdownMenuItem>
+						))}
+					</>
+				) : (
+					[...NAV, ...SECONDARY].map(({ to, label, icon: Icon }) => (
+						<DropdownMenuItem key={to} render={<Link to={to} />}>
+							<Icon /> {label}
+						</DropdownMenuItem>
+					))
+				)}
+				<DropdownMenuSeparator />
+				<AccountSwitchItems />
+				<DropdownMenuItem
+					variant="destructive"
+					onClick={() => signOut(navigate)}
+				>
+					<LogOutIcon /> Sign out
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
+	);
+}
+
 function UserMenu() {
 	const navigate = useNavigate();
 	const { data: session } = authClient.useSession();
+	const accounts = useAccounts();
 	if (!session) return null;
+	const list = accounts.data?.accounts ?? [];
+	const activeId = accounts.data?.active.accountId;
+	const inTeam = list.find((a) => a.accountId === activeId && !a.personal);
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger
@@ -94,21 +292,21 @@ function UserMenu() {
 						{session.user.name}
 					</span>
 					<span className="block truncate text-[11px] text-muted-foreground">
-						{session.user.email}
+						{inTeam ? `in ${accountName(inTeam)}` : session.user.email}
 					</span>
 				</span>
 			</DropdownMenuTrigger>
-			<DropdownMenuContent side="top" className="w-56 bg-popover">
+			<DropdownMenuContent side="top" className="w-60 bg-popover">
 				<DropdownMenuGroup>
 					<DropdownMenuLabel>{session.user.email}</DropdownMenuLabel>
 					<DropdownMenuSeparator />
+					<AccountSwitchItems />
+					<DropdownMenuItem render={<Link to="/settings" />}>
+						<SettingsIcon /> Settings
+					</DropdownMenuItem>
 					<DropdownMenuItem
 						variant="destructive"
-						onClick={() =>
-							authClient.signOut({
-								fetchOptions: { onSuccess: () => navigate({ to: "/" }) },
-							})
-						}
+						onClick={() => signOut(navigate)}
 					>
 						<LogOutIcon /> Sign out
 					</DropdownMenuItem>
@@ -153,6 +351,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 								key={to}
 								to={to}
 								className="flex items-center gap-2.5 px-2.5 py-1.5 text-[13px] text-muted-foreground hover:text-foreground"
+								activeProps={{
+									className: "!bg-sidebar-accent !text-foreground",
+								}}
 							>
 								<Icon className="size-4" />
 								{label}
@@ -168,22 +369,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 			<div className="min-w-0">
 				<header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b bg-background/85 px-4 backdrop-blur-md sm:px-6">
 					<div className="flex items-center gap-2 lg:hidden">
-						<DropdownMenu>
-							<DropdownMenuTrigger
-								render={
-									<Button variant="ghost" size="icon-sm" aria-label="Menu" />
-								}
-							>
-								<MenuIcon />
-							</DropdownMenuTrigger>
-							<DropdownMenuContent className="w-52 bg-popover">
-								{[...NAV, ...SECONDARY].map(({ to, label, icon: Icon }) => (
-									<DropdownMenuItem key={to} render={<Link to={to} />}>
-										<Icon /> {label}
-									</DropdownMenuItem>
-								))}
-							</DropdownMenuContent>
-						</DropdownMenu>
+						<MobileNav />
 						<Logo to="/dashboard" />
 					</div>
 					<div className="hidden lg:block" />

@@ -22,6 +22,7 @@ import {
 	creditTransaction,
 	providerAccount,
 	server,
+	wallet,
 } from "@switchyard/db/schema/app";
 import { eq } from "drizzle-orm";
 
@@ -32,6 +33,12 @@ import { meterUsage } from "./services/billing";
 import { openCredentials } from "./services/credentials";
 import { syncServers } from "./services/jobs";
 import {
+	getNotificationSettings,
+	sendLowBalanceAlerts,
+	setLowBalanceThreshold,
+	updateNotificationSettings,
+} from "./services/notifications";
+import {
 	connectProviderAccount,
 	disconnectProviderAccount,
 	listProviderAccounts,
@@ -40,11 +47,13 @@ import { createServer, deleteServer, getServer } from "./services/servers";
 import { addCredits, getBalance, quoteTopup } from "./services/wallet";
 import {
 	createTestDb,
+	outbox,
 	prepareDatabase,
 	resetDatabase,
 	sandboxCredentials,
 	TEST_CREDENTIALS_KEY,
 	TEST_USER,
+	testMail,
 } from "./testing";
 
 const db = createTestDb();
@@ -64,12 +73,15 @@ const svc: Services = {
 		credentialsKey: TEST_CREDENTIALS_KEY,
 		stripe: null,
 	},
+	mail: testMail,
 };
 
 const USER = TEST_USER;
 const actor: Actor = { userId: USER, apiKeyId: null, via: "dashboard" };
 const fee = (priceHourlyMicros: number) =>
 	Math.ceil((priceHourlyMicros * 500) / 10_000);
+/** Past the sync interval, so every server is due for a provider check. */
+const later = () => new Date(Date.now() + 10 * 60_000);
 
 const connect = (provider: ProviderId, s: Services = svc) =>
 	connectProviderAccount(s, actor, {
@@ -361,8 +373,6 @@ describe("billing", () => {
 });
 
 describe("sync", () => {
-	const later = () => new Date(Date.now() + 10 * 60_000);
-
 	test("a server deleted at the provider is settled and closed", async () => {
 		await credit(5e6);
 		const res = await createServer(svc, actor, { planId: "vultr:vc2-1c-1gb" });
@@ -406,6 +416,12 @@ describe("sync", () => {
 		await expect(
 			createServer(svc, actor, { planId: "hetzner:cx33" }),
 		).rejects.toThrow(/isn't connected/);
+		// The servers still cost money at Hetzner, so the user hears about it once.
+		await syncServers(broken, later());
+		expect(outbox.map((e) => e.subject)).toEqual([
+			"Hetzner stopped accepting your credentials",
+		]);
+		expect(outbox[0]?.text).toContain("http://web.test/providers/hetzner");
 	});
 
 	test("a refused call with working credentials changes nothing", async () => {
@@ -435,6 +451,76 @@ describe("sync", () => {
 			(await meterUsage(svc, new Date(Date.now() + 5 * 60 * 60_000)))
 				.chargedMicros,
 		).toBe(0);
+	});
+});
+
+describe("notifications", () => {
+	const setBalance = (balanceMicros: number) =>
+		db.update(wallet).set({ balanceMicros }).where(eq(wallet.userId, USER));
+	/** Moves the balance, then runs the job like the meter loop does. */
+	const balanceAt = async (micros: number) => {
+		await setBalance(micros);
+		await sendLowBalanceAlerts(svc);
+	};
+
+	test("a low balance emails once per drop below the threshold", async () => {
+		// A new account at $0 never had enough to run low.
+		await sendLowBalanceAlerts(svc);
+		expect(outbox).toHaveLength(0);
+
+		await balanceAt(10e6);
+		await balanceAt(2e6);
+		await balanceAt(1e6);
+		expect(outbox.map((e) => e.subject)).toEqual([
+			"Your HessianLabs balance is $2.00",
+		]);
+		expect(outbox[0]?.text).toContain("http://web.test/settings/notifications");
+
+		await balanceAt(6e6);
+		await balanceAt(4e6);
+		expect(outbox).toHaveLength(2);
+	});
+
+	test("follows the account's threshold, opt-out and auto top-up", async () => {
+		expect(await setLowBalanceThreshold(db, USER, 20)).toBe(20e6);
+		await balanceAt(25e6);
+		await balanceAt(15e6);
+		expect(outbox).toHaveLength(1);
+
+		await updateNotificationSettings(db, USER, { lowBalance: false });
+		await balanceAt(25e6);
+		await balanceAt(15e6);
+		expect(outbox).toHaveLength(1);
+
+		// Auto top-up refills the balance itself and emails if it fails.
+		await updateNotificationSettings(db, USER, { lowBalance: true });
+		await db
+			.update(wallet)
+			.set({ autoTopupEnabled: true })
+			.where(eq(wallet.userId, USER));
+		await balanceAt(25e6);
+		await balanceAt(15e6);
+		expect(outbox).toHaveLength(1);
+
+		expect(await getNotificationSettings(db, USER)).toEqual({
+			providerProblems: true,
+			autoTopupFailed: true,
+			lowBalance: true,
+			longRunning: true,
+			serverExpiry: true,
+			newSignIn: true,
+		});
+	});
+
+	test("switching a kind off stops its emails", async () => {
+		await updateNotificationSettings(db, USER, { providerProblems: false });
+		await credit(5e6);
+		await createServer(svc, actor, { planId: "hetzner:cx33" });
+		await syncServers(
+			withAdapter({ getServer: denied, verify: denied }),
+			later(),
+		);
+		expect(outbox).toHaveLength(0);
 	});
 });
 

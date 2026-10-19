@@ -3,6 +3,8 @@ import { and, asc, eq, inArray, isNull, lt, or } from "drizzle-orm";
 
 import type { Services } from "../context";
 import { meterUsage } from "./billing";
+import { expireServers, sendLongRunningAlerts } from "./expiry";
+import { sendLowBalanceAlerts } from "./notifications";
 import { runAutoTopups } from "./payments";
 import { syncServer } from "./servers";
 
@@ -78,6 +80,9 @@ export function startJobs(
 			await syncServers(svc);
 			await meterUsage(svc);
 			await runAutoTopups(svc);
+			await sendLowBalanceAlerts(svc);
+			await expireServers(svc);
+			await sendLongRunningAlerts(svc);
 		} catch (err) {
 			console.error("[jobs] metering failed:", err);
 		} finally {
