@@ -27,7 +27,7 @@ export function buildUserData(
 	if (!userData?.trim()) return base;
 
 	// Combine our part with the caller's (any cloud-init format) as MIME multipart.
-	const boundary = `==SWITCHYARD-${crypto.randomUUID()}==`;
+	const boundary = `==HESSIANLABS-${crypto.randomUUID()}==`;
 	const userType = detectUserDataType(userData);
 	return [
 		`Content-Type: multipart/mixed; boundary="${boundary}"`,
@@ -36,7 +36,7 @@ export function buildUserData(
 		`--${boundary}`,
 		'Content-Type: text/cloud-config; charset="utf-8"',
 		"MIME-Version: 1.0",
-		'Content-Disposition: attachment; filename="switchyard.cfg"',
+		'Content-Disposition: attachment; filename="hessianlabs.cfg"',
 		"",
 		base,
 		`--${boundary}`,

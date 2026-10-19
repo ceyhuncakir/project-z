@@ -24,6 +24,7 @@ import {
 	createTestDb,
 	prepareDatabase,
 	resetDatabase,
+	TEST_CREDENTIALS_KEY,
 	TEST_USER,
 } from "./testing";
 
@@ -84,6 +85,8 @@ const svc: Services = {
 		apiUrl: "http://api.test",
 		allowTestCredits: false,
 		githubAuth: false,
+		feeBps: 500,
+		credentialsKey: TEST_CREDENTIALS_KEY,
 		stripe: { client: stripe, webhookSecret: WEBHOOK_SECRET },
 	},
 };

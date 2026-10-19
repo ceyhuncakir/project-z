@@ -69,7 +69,7 @@ export function Features() {
 					className="md:col-span-4"
 					icon={<GaugeIcon />}
 					title="Say what you need, not where."
-					body="Describe the machine — cores, memory, GPU memory, continent, budget. The router ranks every matching plan across providers, provisions the cheapest, and falls back automatically when one is out of capacity."
+					body="Describe the machine — cores, memory, continent, budget. The router ranks every matching plan across your connected accounts, provisions the cheapest, and falls back automatically when one is out of capacity."
 				>
 					<RoutingVisual />
 				</Tile>
@@ -77,8 +77,8 @@ export function Features() {
 					index={1}
 					className="md:col-span-2"
 					icon={<BanknoteIcon />}
-					title="Per-minute billing"
-					body="One balance across every provider, charged by the minute. Destroy a server and billing stops."
+					title="Your account, your bill"
+					body="Servers run in your own accounts at list price, billed by the provider. HessianLabs's fee is charged per minute from credits and stops with the server."
 				>
 					<p className="tabular font-medium text-4xl tracking-tight">
 						$0.0055<span className="text-base text-muted-foreground">/h</span>
@@ -91,8 +91,8 @@ export function Features() {
 					index={2}
 					className="md:col-span-2"
 					icon={<CpuIcon />}
-					title="CPUs and GPUs, one call"
-					body="General clouds and GPU clouds share one catalog. Add min_vram_gb and the same create_server call lands on an H100 with CUDA ready."
+					title="GPUs, coming soon"
+					body="GPU clouds are already in the catalog and join routing as their adapters ship. Then min_vram_gb on the same create_server call lands on an H100 with CUDA ready."
 				>
 					<code className="block truncate border bg-card px-3 py-2 font-mono text-[11px]">
 						create_server({"{"} min_vram_gb: 80 {"}"})
@@ -103,7 +103,7 @@ export function Features() {
 					className="md:col-span-2"
 					icon={<KeyRoundIcon />}
 					title="Budgets per agent"
-					body="Each API key gets its own spend cap and server limit. Hand out keys without handing over your card."
+					body="Each API key gets its own spend cap and server limit. Hand out keys without handing over your cloud tokens."
 				>
 					<div className="space-y-1.5 font-mono text-[11px]">
 						<div className="flex justify-between">
@@ -137,7 +137,7 @@ export function Features() {
 					className="md:col-span-3"
 					icon={<ListChecksIcon />}
 					title="Every action on the record"
-					body="Which key created what, where, and what it cost — one activity log across all providers."
+					body="Which key created what, where, and what it cost — one activity log across all your accounts."
 				>
 					<ul className="divide-y border bg-card font-mono text-[11px]">
 						{[
@@ -164,7 +164,7 @@ export function Features() {
 					body="The same key works for the MCP endpoint and the OpenAPI-documented REST API, so scripts and agents share one account."
 				>
 					<code className="block truncate border bg-card px-3 py-2 font-mono text-[11px]">
-						curl -X POST /v1/servers -H "Authorization: Bearer sy_live_…"
+						curl -X POST /v1/servers -H "Authorization: Bearer hl_live_…"
 					</code>
 				</Tile>
 			</div>

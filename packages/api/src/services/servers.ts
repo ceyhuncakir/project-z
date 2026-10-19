@@ -13,6 +13,7 @@ import {
 	matchPlans,
 	type PowerAction,
 	PROVIDERS,
+	type ProviderAdapter,
 	ProviderError,
 	type ProviderId,
 	parsePublicKey,
@@ -20,27 +21,49 @@ import {
 	priceIn,
 	rankCandidates,
 } from "@switchyard/cloud";
-import { newId } from "@switchyard/db";
-import { apiKey, server } from "@switchyard/db/schema/app";
-import { and, count, desc, eq, inArray, notInArray } from "drizzle-orm";
+import { type Executor, newId } from "@switchyard/db";
+import {
+	apiKey,
+	providerAccount,
+	server,
+	wallet,
+} from "@switchyard/db/schema/app";
+import {
+	and,
+	count,
+	desc,
+	eq,
+	inArray,
+	isNull,
+	notInArray,
+	sql,
+} from "drizzle-orm";
 import { z } from "zod";
 
 import type { Actor, Services } from "../context";
 import { logActivity } from "./activity";
 import { chargeUsage } from "./billing";
+import {
+	accountAdapter,
+	adapterForServer,
+	isAuthError,
+	loadAccount,
+	type ProviderAccountRow,
+	workingAccounts,
+} from "./connections";
 import { listSshKeys } from "./ssh-keys";
-import { ensureWallet, getBalance } from "./wallet";
+import { ACTIVE, CLOSED, SYNCABLE } from "./statuses";
+import { ensureWallet } from "./wallet";
 
 type ServerRow = typeof server.$inferSelect;
 
-const ACTIVE = [
-	"provisioning",
-	"running",
-	"stopped",
-	"suspended",
-	"deleting",
-] as const;
 const MAX_ATTEMPTS = 3;
+
+const system = (userId: string): Actor => ({
+	userId,
+	apiKeyId: null,
+	via: "system",
+});
 
 export const createServerInputSchema = z.object({
 	name: z
@@ -87,7 +110,9 @@ export function serializeServer(s: ServerRow) {
 		ipv4: s.ipv4,
 		ipv6: s.ipv6,
 		priceHourlyMicros: s.priceHourlyMicros,
+		feeHourlyMicros: s.feeHourlyMicros,
 		totalCostMicros: s.totalCostMicros,
+		totalFeeMicros: s.totalFeeMicros,
 		sandbox: s.sandbox,
 		labels: s.labels,
 		errorMessage: s.errorMessage,
@@ -99,16 +124,34 @@ export function serializeServer(s: ServerRow) {
 
 export type SerializedServer = ReturnType<typeof serializeServer>;
 
+/** HessianLabs's hourly fee on a server with this list price. */
+export const feeFor = (svc: Services, priceHourlyMicros: number) =>
+	Math.ceil((priceHourlyMicros * svc.config.feeBps) / 10_000);
+
+const providerNames = (ids: ProviderId[]) =>
+	ids.map((id) => PROVIDERS[id].name).join(", ");
+
 async function resolveCandidates(
 	svc: Services,
 	input: z.output<typeof createServerInputSchema>,
+	connected: ProviderId[],
 ) {
+	if (!connected.length) {
+		throw new ORPCError("PRECONDITION_FAILED", {
+			message: `No cloud account is connected. Connect one at ${svc.config.webUrl}/providers, then try again.`,
+		});
+	}
 	const snapshot = await svc.cloud.catalog.get();
 	if (input.planId) {
 		const plan = findPlan(snapshot, input.planId);
 		if (!plan) {
 			throw new ORPCError("BAD_REQUEST", {
 				message: `Unknown plan "${input.planId}". Use search_plans to find valid plan ids.`,
+			});
+		}
+		if (!connected.includes(plan.provider)) {
+			throw new ORPCError("BAD_REQUEST", {
+				message: `Your ${PROVIDERS[plan.provider].name} account isn't connected. Connect it at ${svc.config.webUrl}/providers, or pick a plan on: ${providerNames(connected)}.`,
 			});
 		}
 		if (input.regionId) {
@@ -141,62 +184,98 @@ async function resolveCandidates(
 			.map((region) => ({ plan, region }));
 	}
 
+	const requested = input.requirements?.providers;
+	const providers = requested
+		? requested.filter((p) => connected.includes(p))
+		: connected;
+	if (!providers.length) {
+		throw new ORPCError("BAD_REQUEST", {
+			message: `None of the requested providers are connected. Connected: ${providerNames(connected)}.`,
+		});
+	}
 	const filters = {
 		...input.requirements,
+		providers,
 		regions: input.regionId ? [input.regionId] : input.requirements?.regions,
 	};
 	const candidates = rankCandidates(snapshot, filters, MAX_ATTEMPTS);
 	if (!candidates.length) {
 		throw new ORPCError("BAD_REQUEST", {
-			message:
-				"No plan matches these requirements. Relax a constraint (price, region, size) or call search_plans to explore.",
+			message: `No plan on your connected accounts (${providerNames(connected)}) matches these requirements. Relax a constraint (price, region, size), connect another provider, or call search_plans to explore.`,
 		});
 	}
 	return candidates;
 }
 
-async function checkSpendGuards(
-	svc: Services,
-	actor: Actor,
-	firstHourMicros: number,
+/** An API key's guardrails, checked against everything it already runs. */
+async function checkKeyLimits(
+	tx: Executor,
+	key: typeof apiKey.$inferSelect,
+	priceHourlyMicros: number,
 ) {
-	const balance = await getBalance(svc.db, actor.userId);
-	if (balance < firstHourMicros) {
-		throw new ORPCError("PAYMENT_REQUIRED", {
-			message: `Insufficient credits: balance ${formatUsd(balance)}, this server needs at least ${formatUsd(
-				firstHourMicros,
-			)} (one hour). Add credits in the dashboard.`,
+	const [usage] = await tx
+		.select({
+			n: count(),
+			hourly: sql<string>`coalesce(sum(${server.priceHourlyMicros}), 0)`,
+		})
+		.from(server)
+		.where(and(eq(server.apiKeyId, key.id), inArray(server.status, ACTIVE)));
+	if (key.maxServers !== null && (usage?.n ?? 0) >= key.maxServers) {
+		throw new ORPCError("FORBIDDEN", {
+			message: `API key "${key.name}" may run at most ${key.maxServers} server(s). Delete one or raise the limit.`,
 		});
 	}
-	if (!actor.apiKeyId) return;
-	const [key] = await svc.db
-		.select()
-		.from(apiKey)
-		.where(eq(apiKey.id, actor.apiKeyId));
-	if (!key) return;
+	// Leave room for an hour of everything the key runs, so parallel creates can't overshoot.
+	const running = Number(usage?.hourly ?? 0);
 	if (
 		key.spendLimitMicros !== null &&
-		key.spentMicros + firstHourMicros > key.spendLimitMicros
+		key.spentMicros + running + priceHourlyMicros > key.spendLimitMicros
 	) {
 		throw new ORPCError("FORBIDDEN", {
-			message: `API key "${key.name}" reached its spend limit (${formatUsd(key.spentMicros)} of ${formatUsd(
-				key.spendLimitMicros,
-			)}). Raise the limit in the dashboard.`,
+			message: `API key "${key.name}" would pass its spend limit: ${formatUsd(key.spentMicros)} spent and ${formatUsd(
+				running,
+				{ precise: true },
+			)}/h running, limit ${formatUsd(key.spendLimitMicros)}. Raise the limit in the dashboard.`,
 		});
 	}
-	if (key.maxServers !== null) {
-		const [row] = await svc.db
-			.select({ n: count() })
-			.from(server)
-			.where(
-				and(eq(server.apiKeyId, key.id), inArray(server.status, [...ACTIVE])),
-			);
-		if ((row?.n ?? 0) >= key.maxServers) {
-			throw new ORPCError("FORBIDDEN", {
-				message: `API key "${key.name}" may run at most ${key.maxServers} server(s). Delete one or raise the limit.`,
+}
+
+/**
+ * Checks the balance and the API key's guardrails and inserts the server row
+ * in one transaction. The wallet and key rows stay locked until it commits,
+ * so parallel create calls are checked one at a time instead of all passing.
+ */
+async function reserveServer(
+	svc: Services,
+	actor: Actor,
+	row: typeof server.$inferInsert,
+) {
+	await svc.db.transaction(async (tx) => {
+		const [w] = await tx
+			.select({ balance: wallet.balanceMicros })
+			.from(wallet)
+			.where(eq(wallet.userId, actor.userId))
+			.for("update");
+		const balance = w?.balance ?? 0;
+		const firstHourFee = row.feeHourlyMicros ?? 0;
+		if (balance <= 0 || balance < firstHourFee) {
+			throw new ORPCError("PAYMENT_REQUIRED", {
+				message: `Insufficient credits: balance ${formatUsd(balance)}. HessianLabs's fee for this server is ${formatUsd(
+					firstHourFee,
+					{ precise: true },
+				)}/h, paid from your balance. Add credits in the dashboard.`,
 			});
 		}
-	}
+		if (actor.apiKeyId) {
+			const [key] = await tx
+				.select()
+				.from(apiKey)
+				.where(eq(apiKey.id, actor.apiKeyId))
+				.for("update");
+			if (key) await checkKeyLimits(tx, key, row.priceHourlyMicros);
+		}
+		await tx.insert(server).values(row);
+	});
 }
 
 async function collectSshKeys(
@@ -220,7 +299,7 @@ async function collectSshKeys(
 		: [];
 	const keys = [...new Set([...inline, ...saved.map((s) => s.publicKey)])];
 	if (keys.length) return { keys, generated: null };
-	const generated = generateEd25519KeyPair("switchyard-generated");
+	const generated = generateEd25519KeyPair("hessianlabs-generated");
 	return { keys: [generated.publicKey], generated };
 }
 
@@ -230,7 +309,8 @@ export async function createServer(
 	rawInput: CreateServerInput,
 ) {
 	const input = createServerInputSchema.parse(rawInput);
-	let candidates = await resolveCandidates(svc, input);
+	const accounts = await workingAccounts(svc.db, actor.userId);
+	let candidates = await resolveCandidates(svc, input, [...accounts.keys()]);
 	if (IMAGES.find((i) => i.id === input.image)?.gpu) {
 		candidates = candidates.filter((c) => c.plan.gpu);
 		if (!candidates.length) {
@@ -242,12 +322,18 @@ export async function createServer(
 	const imageFor = (c: Candidate) =>
 		input.image ?? (c.plan.gpu ? DEFAULT_GPU_IMAGE : DEFAULT_IMAGE);
 	const first = candidates[0] as Candidate;
-	await ensureWallet(svc.db, actor.userId);
-	await checkSpendGuards(
-		svc,
-		actor,
-		priceIn(first.plan, first.region.slug).hourlyMicros,
-	);
+
+	const adapters = new Map<ProviderId, ProviderAdapter>();
+	const accountFor = (c: Candidate) =>
+		accounts.get(c.plan.provider) as ProviderAccountRow;
+	const adapterFor = (c: Candidate) => {
+		let adapter = adapters.get(c.plan.provider);
+		if (!adapter) {
+			adapter = accountAdapter(svc, accountFor(c));
+			adapters.set(c.plan.provider, adapter);
+		}
+		return adapter;
+	};
 
 	const { keys, generated } = await collectSshKeys(svc, actor.userId, input);
 	const userData = buildUserData(keys, input.userData);
@@ -255,25 +341,31 @@ export async function createServer(
 	const name =
 		input.name ?? `${first.region.slug.toLowerCase()}-${id.slice(-6)}`;
 
-	const snapshotFields = (c: Candidate) => ({
-		provider: c.plan.provider,
-		regionSlug: c.region.slug,
-		city: c.region.city,
-		country: c.region.country,
-		planSlug: c.plan.slug,
-		planName: c.plan.name,
-		vcpu: c.plan.vcpu,
-		memoryGb: c.plan.memoryGb,
-		diskGb: c.plan.diskGb,
-		gpu: c.plan.gpu
-			? `${c.plan.gpu.count}× ${c.plan.gpu.model}, ${c.plan.gpu.count * c.plan.gpu.vramGb} GB VRAM`
-			: null,
-		image: imageFor(c),
-		priceHourlyMicros: priceIn(c.plan, c.region.slug).hourlyMicros,
-		sandbox: svc.cloud.adapter(c.plan.provider).info.mode === "sandbox",
-	});
+	const snapshotFields = (c: Candidate) => {
+		const price = priceIn(c.plan, c.region.slug).hourlyMicros;
+		return {
+			provider: c.plan.provider,
+			providerAccountId: accountFor(c).id,
+			regionSlug: c.region.slug,
+			city: c.region.city,
+			country: c.region.country,
+			planSlug: c.plan.slug,
+			planName: c.plan.name,
+			vcpu: c.plan.vcpu,
+			memoryGb: c.plan.memoryGb,
+			diskGb: c.plan.diskGb,
+			gpu: c.plan.gpu
+				? `${c.plan.gpu.count}× ${c.plan.gpu.model}, ${c.plan.gpu.count * c.plan.gpu.vramGb} GB VRAM`
+				: null,
+			image: imageFor(c),
+			priceHourlyMicros: price,
+			feeHourlyMicros: feeFor(svc, price),
+			sandbox: adapterFor(c).info.mode === "sandbox",
+		};
+	};
 
-	await svc.db.insert(server).values({
+	await ensureWallet(svc.db, actor.userId);
+	await reserveServer(svc, actor, {
 		id,
 		userId: actor.userId,
 		apiKeyId: actor.apiKeyId,
@@ -286,9 +378,8 @@ export async function createServer(
 	const attempts: { planId: string; regionId: string; error: string }[] = [];
 	let row: ServerRow | undefined;
 	for (const candidate of candidates) {
-		const adapter = svc.cloud.adapter(candidate.plan.provider);
 		try {
-			const created = await adapter.createServer({
+			const created = await adapterFor(candidate).createServer({
 				serverId: id,
 				name,
 				regionSlug: candidate.region.slug,
@@ -297,6 +388,7 @@ export async function createServer(
 				sshPublicKeys: keys,
 				userData,
 			});
+			const now = new Date();
 			[row] = await svc.db
 				.update(server)
 				.set({
@@ -305,7 +397,8 @@ export async function createServer(
 					status: created.status === "running" ? "running" : "provisioning",
 					ipv4: created.ipv4,
 					ipv6: created.ipv6,
-					billedUntil: new Date(),
+					billedUntil: now,
+					syncedAt: now,
 				})
 				.where(eq(server.id, id))
 				.returning();
@@ -374,37 +467,157 @@ async function loadOwned(svc: Services, userId: string, id: string) {
 	return row;
 }
 
-/** Pulls fresh status from the provider for servers still booting. */
-export async function refreshServer(
-	svc: Services,
-	row: ServerRow,
-): Promise<ServerRow> {
-	if (row.status !== "provisioning" || !row.providerServerId) return row;
-	try {
-		const remote = await svc.cloud
-			.adapter(row.provider as ProviderId)
-			.getServer(row.providerServerId);
-		const status = remote.status === "deleted" ? row.status : remote.status;
+/** Charges everything up to `now`, one-hour minimum included. Retries if a metering tick lands in between. */
+async function settle(svc: Services, id: string, now: Date) {
+	for (let attempt = 0; attempt < 3; attempt++) {
+		const [fresh] = await svc.db.select().from(server).where(eq(server.id, id));
 		if (
-			status === row.status &&
-			remote.ipv4 === row.ipv4 &&
-			remote.ipv6 === row.ipv6
+			!fresh ||
+			(await chargeUsage(svc.db, fresh, now, { finalize: true })) !== null
 		)
-			return row;
-		const [updated] = await svc.db
-			.update(server)
-			.set({ status, ipv4: remote.ipv4, ipv6: remote.ipv6 })
-			.where(eq(server.id, row.id))
-			.returning();
-		return updated ?? row;
-	} catch (err) {
-		console.error(
-			`[servers] refresh ${row.id} failed:`,
-			(err as Error).message,
-		);
-		return row;
+			return;
 	}
 }
+
+/**
+ * Stops managing an account's servers: settles their fees and marks them
+ * detached. They keep running in the user's account.
+ */
+export async function detachServers(
+	svc: Services,
+	actor: Actor,
+	accountId: string,
+	reason: string,
+	now = new Date(),
+) {
+	const rows = await svc.db
+		.select()
+		.from(server)
+		.where(
+			and(
+				eq(server.providerAccountId, accountId),
+				inArray(server.status, ACTIVE),
+			),
+		);
+	for (const row of rows) {
+		await settle(svc, row.id, now);
+		await svc.db
+			.update(server)
+			.set({ status: "detached", deletedAt: now })
+			.where(eq(server.id, row.id));
+		await logActivity(svc.db, actor, {
+			action: "server.detach",
+			serverId: row.id,
+			message: `Stopped managing ${row.name}: ${reason}. It keeps running in your ${PROVIDERS[row.provider as ProviderId]?.name ?? row.provider} account.`,
+		});
+	}
+	return rows.length;
+}
+
+/**
+ * A 401/403 on one call may only be a missing permission. If verify() is
+ * refused too, the credentials stopped working: flag the account and detach
+ * its servers so their fees stop.
+ */
+async function checkAccount(
+	svc: Services,
+	account: ProviderAccountRow,
+	adapter: ProviderAdapter,
+	now: Date,
+) {
+	try {
+		await adapter.verify();
+		return;
+	} catch (err) {
+		if (!isAuthError(err)) return;
+	}
+	const name = PROVIDERS[account.provider as ProviderId]?.name;
+	const [flagged] = await svc.db
+		.update(providerAccount)
+		.set({ error: `${name} no longer accepts the saved credentials` })
+		.where(
+			and(eq(providerAccount.id, account.id), isNull(providerAccount.error)),
+		)
+		.returning();
+	if (!flagged) return;
+	await detachServers(
+		svc,
+		system(account.userId),
+		account.id,
+		`${name} no longer accepts the saved credentials`,
+		now,
+	);
+	await logActivity(svc.db, system(account.userId), {
+		action: "provider.failed",
+		message: `${name} rejected the saved credentials. Its servers are no longer managed or billed by HessianLabs.`,
+	});
+}
+
+/**
+ * Asks the provider about a server and records what changed. A server deleted
+ * outside HessianLabs (in the provider's console) is settled and closed.
+ */
+export async function syncServer(
+	svc: Services,
+	row: ServerRow,
+	now = new Date(),
+): Promise<ServerRow> {
+	if (!row.providerServerId || !row.providerAccountId) return row;
+	const account = await loadAccount(svc.db, row.providerAccountId);
+	if (!account || account.error) return row;
+	const adapter = accountAdapter(svc, account);
+	let remote: Awaited<ReturnType<ProviderAdapter["getServer"]>>;
+	try {
+		remote = await adapter.getServer(row.providerServerId);
+	} catch (err) {
+		if (isAuthError(err)) await checkAccount(svc, account, adapter, now);
+		else
+			console.error(`[servers] sync ${row.id} failed:`, (err as Error).message);
+		return row;
+	}
+
+	if (remote.status === "deleted") {
+		const [closing] = await svc.db
+			.update(server)
+			.set({ status: "deleting", syncedAt: now })
+			.where(
+				and(
+					eq(server.id, row.id),
+					inArray(server.status, [...SYNCABLE, "deleting"]),
+				),
+			)
+			.returning();
+		if (!closing) return row;
+		await settle(svc, row.id, now);
+		const [closed] = await svc.db
+			.update(server)
+			.set({ status: "deleted", deletedAt: now })
+			.where(eq(server.id, row.id))
+			.returning();
+		await logActivity(svc.db, system(row.userId), {
+			action: "server.gone",
+			serverId: row.id,
+			message: `${row.name} was deleted outside HessianLabs; its fee stopped`,
+		});
+		return closed ?? row;
+	}
+
+	const [updated] = await svc.db
+		.update(server)
+		.set({
+			status: remote.status,
+			ipv4: remote.ipv4,
+			ipv6: remote.ipv6,
+			syncedAt: now,
+		})
+		.where(and(eq(server.id, row.id), inArray(server.status, SYNCABLE)))
+		.returning();
+	return updated ?? row;
+}
+
+/** Fresh status for servers still booting; settled ones are synced by the background job. */
+const refreshBooting = (svc: Services, row: ServerRow) =>
+	row.status === "provisioning" ? syncServer(svc, row) : row;
 
 export async function getServer(
 	svc: Services,
@@ -412,12 +625,12 @@ export async function getServer(
 	id: string,
 	opts: { waitForRunningSeconds?: number } = {},
 ) {
-	let row = await refreshServer(svc, await loadOwned(svc, userId, id));
+	let row = await refreshBooting(svc, await loadOwned(svc, userId, id));
 	const deadline =
 		Date.now() + Math.min(opts.waitForRunningSeconds ?? 0, 120) * 1000;
 	while (row.status === "provisioning" && Date.now() < deadline) {
 		await Bun.sleep(3000);
-		row = await refreshServer(svc, row);
+		row = await refreshBooting(svc, row);
 	}
 	return serializeServer(row);
 }
@@ -433,18 +646,16 @@ export async function listServers(
 		.where(
 			and(
 				eq(server.userId, userId),
-				opts.includeDeleted
-					? undefined
-					: notInArray(server.status, ["deleted", "error"]),
+				opts.includeDeleted ? undefined : notInArray(server.status, CLOSED),
 			),
 		)
 		.orderBy(desc(server.createdAt))
 		.limit(Math.min(opts.limit ?? 100, 500));
-	const refreshed = await Promise.all(rows.map((r) => refreshServer(svc, r)));
+	const refreshed = await Promise.all(rows.map((r) => refreshBooting(svc, r)));
 	return refreshed.map(serializeServer);
 }
 
-/** Destroys at the provider, settles the final bill and marks the row deleted. */
+/** Destroys at the provider, settles the final fee and marks the row deleted. */
 export async function destroyServer(
 	svc: Services,
 	actor: Actor,
@@ -452,24 +663,35 @@ export async function destroyServer(
 	reason?: string,
 ) {
 	if (row.status === "deleted") return serializeServer(row);
+	const adapter = await adapterForServer(svc, row);
+	const [claimed] = await svc.db
+		.update(server)
+		.set({ status: "deleting", syncedAt: new Date() })
+		.where(
+			and(
+				eq(server.id, row.id),
+				notInArray(server.status, ["deleting", ...CLOSED]),
+			),
+		)
+		.returning();
+	if (!claimed) {
+		throw new ORPCError("CONFLICT", {
+			message: `Server ${row.id} is already being deleted.`,
+		});
+	}
 	if (row.providerServerId) {
-		await svc.cloud
-			.adapter(row.provider as ProviderId)
-			.deleteServer(row.providerServerId);
+		try {
+			await adapter.deleteServer(row.providerServerId);
+		} catch (err) {
+			await svc.db
+				.update(server)
+				.set({ status: row.status })
+				.where(eq(server.id, row.id));
+			throw err;
+		}
 	}
 	const now = new Date();
-	// A metering tick may land between loading the row and charging; retry on a fresh copy.
-	for (let attempt = 0; attempt < 3; attempt++) {
-		const [fresh] = await svc.db
-			.select()
-			.from(server)
-			.where(eq(server.id, row.id));
-		if (
-			!fresh ||
-			(await chargeUsage(svc.db, fresh, now, { finalize: true })) !== null
-		)
-			break;
-	}
+	await settle(svc, row.id, now);
 	const [updated] = await svc.db
 		.update(server)
 		.set({ status: "deleted", deletedAt: now })
@@ -485,7 +707,7 @@ export async function destroyServer(
 
 export async function deleteServer(svc: Services, actor: Actor, id: string) {
 	const row = await loadOwned(svc, actor.userId, id);
-	if (row.status === "deleted" || row.status === "error") {
+	if (CLOSED.includes(row.status)) {
 		throw new ORPCError("BAD_REQUEST", {
 			message: `Server ${id} is already ${row.status}`,
 		});
@@ -511,14 +733,8 @@ export async function powerAction(
 			message: `Cannot ${action} a server that is ${row.status}.`,
 		});
 	}
-	if (action === "start" && (await getBalance(svc.db, actor.userId)) <= 0) {
-		throw new ORPCError("PAYMENT_REQUIRED", {
-			message: "Add credits before starting servers again.",
-		});
-	}
-	await svc.cloud
-		.adapter(row.provider as ProviderId)
-		.powerAction(row.providerServerId, action);
+	const adapter = await adapterForServer(svc, row);
+	await adapter.powerAction(row.providerServerId, action);
 	const [updated] = await svc.db
 		.update(server)
 		.set({

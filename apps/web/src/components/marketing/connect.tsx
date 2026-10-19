@@ -24,9 +24,9 @@ export function Connect() {
 					</h2>
 					<p className="mt-4 max-w-md text-muted-foreground text-sm leading-relaxed">
 						{site.name} speaks the Model Context Protocol over Streamable HTTP.
-						Create a key, paste the config, and your agent gets eleven tools to
-						find, create, inspect, power and delete servers — and to size GPU
-						machines for models.
+						Connect a cloud, create a key, paste the config, and your agent gets
+						eleven tools to find, create, inspect, power and delete servers in
+						your accounts — and to size GPU machines for models.
 					</p>
 					<ul className="mt-6 grid grid-cols-2 gap-x-6 gap-y-2 font-mono text-[12px]">
 						{TOOLS.map((t) => (

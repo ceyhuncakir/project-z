@@ -166,7 +166,7 @@ export function SceneLlm({ t }: { t: number }) {
 				<div className="mt-auto space-y-1 border-t px-4 py-3 font-mono text-[11px] leading-relaxed">
 					<Appear show={t >= 4_200}>
 						<ToolLine
-							name="switchyard.create_server"
+							name="hessianlabs.create_server"
 							args="{ min_vram_gb: 85 }"
 							pending={t < 5_000}
 						/>

@@ -23,7 +23,7 @@ export function SiteHeader() {
 				hash="gpu"
 				className="group flex items-center justify-center gap-2 border-b bg-foreground px-4 py-2 text-center font-mono text-[11px] text-background/80 transition-colors hover:text-background"
 			>
-				<span className="text-signal">New</span>
+				<span className="text-signal">Soon</span>
 				<span className="text-background/40">·</span>
 				GPU clouds for LLM hosting
 				<ArrowRightIcon className="size-3 transition-transform group-hover:translate-x-0.5" />

@@ -7,7 +7,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Switchyard design tokens.
+ * HessianLabs design tokens.
  * Warm paper + ink with one signal colour (international orange) used only
  * for the primary action and live states. Hairlines instead of shadows.
  */

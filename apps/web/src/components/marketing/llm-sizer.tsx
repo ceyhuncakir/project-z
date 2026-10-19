@@ -41,10 +41,10 @@ export function LlmSizer() {
 					index="05"
 					label="GPU clouds"
 					title="What does it take to serve…?"
-					lede="Pick an open-weight model. Switchyard estimates the GPU memory it needs and finds the cheapest GPU plan that fits — the same answer your agent gets from size_llm."
+					lede="Pick an open-weight model. HessianLabs estimates the GPU memory it needs and finds the cheapest GPU plan that fits — the answer your agent will get from size_llm once GPU clouds can be connected."
 				>
 					<span className="self-start border border-warn/40 bg-warn/10 px-2.5 py-1 font-mono text-[11px] md:self-end">
-						GPU clouds are in preview · simulated, indicative prices
+						GPU clouds are coming soon · indicative prices
 					</span>
 				</SectionIntro>
 

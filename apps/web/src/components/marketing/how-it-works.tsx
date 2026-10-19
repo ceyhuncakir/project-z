@@ -2,18 +2,18 @@ import { Reveal, SectionIntro } from "./section";
 
 const STEPS = [
 	{
-		title: "Add credits",
-		body: "Top up once by card through Stripe, or let a saved card top you up automatically. Provider prices pass straight through.",
-		code: "balance  $50.00",
+		title: "Connect your clouds",
+		body: "Paste an API token for Hetzner, DigitalOcean, Vultr or another provider. Servers run in your account, and your provider bills you directly.",
+		code: "hetzner  connected  …a1b2",
 	},
 	{
 		title: "Connect your agent",
-		body: "One line in Claude Code, Cursor, Codex or any MCP client. Give each agent its own key, budget and server limit.",
-		code: "claude mcp add --transport http switchyard …",
+		body: "One line in Claude Code, Cursor, Codex or any MCP client. Add a little credit for HessianLabs's fee, and give each agent its own key, budget and server limit.",
+		code: "claude mcp add --transport http hessianlabs …",
 	},
 	{
 		title: "Just ask",
-		body: "“I need an 8 GB box near Frankfurt” or “serve Llama 70B for an hour.” The router picks, provisions and hands back SSH.",
+		body: "“I need an 8 GB box near Frankfurt” or “three boxes in three countries.” The router picks across your accounts, provisions and hands back SSH.",
 		code: "ssh root@203.0.113.42",
 	},
 ];

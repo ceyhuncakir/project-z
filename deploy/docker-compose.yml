@@ -1,0 +1,18 @@
+# Postgres for Switchyard.
+#
+#   docker compose up -d
+#
+# The password comes from apps/server/.env, the same file local dev uses; add
+# POSTGRES_PASSWORD to it before the first run (see apps/server/.env.example).
+# Listens on localhost:5433:
+#
+#   postgresql://switchyard:<POSTGRES_PASSWORD>@localhost:5433/switchyard
+#
+# The services live in stack.yml because Compose only interpolates from a .env
+# next to the compose file; `include` is how it reads one from elsewhere.
+
+name: switchyard-deploy
+
+include:
+  - path: stack.yml
+    env_file: ../apps/server/.env

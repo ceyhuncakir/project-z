@@ -25,8 +25,12 @@ export function createQueryClient() {
 	});
 }
 
+// Server-side rendering may have to reach the API on a private address.
+const serverUrl =
+	(import.meta.env.SSR && ENV.INTERNAL_SERVER_URL) || ENV.VITE_SERVER_URL;
+
 const link = new RPCLink({
-	url: `${ENV.VITE_SERVER_URL.replace(/\/$/, "")}/rpc`,
+	url: `${serverUrl.replace(/\/$/, "")}/rpc`,
 	fetch(url, options) {
 		return fetch(url, {
 			...options,

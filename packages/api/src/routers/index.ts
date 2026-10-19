@@ -5,8 +5,8 @@ import {
 	PROVIDER_IDS,
 	planFiltersSchema,
 } from "@switchyard/cloud";
-import { server } from "@switchyard/db/schema/app";
-import { and, count, eq, notInArray } from "drizzle-orm";
+import { providerAccount, server } from "@switchyard/db/schema/app";
+import { and, count, eq, isNull, notInArray } from "drizzle-orm";
 import { z } from "zod";
 
 import { publicProcedure, sessionProcedure, userProcedure } from "../index";
@@ -38,6 +38,11 @@ import {
 	updateAutoTopup,
 } from "../services/payments";
 import {
+	connectProviderAccount,
+	disconnectProviderAccount,
+	listProviderAccounts,
+} from "../services/provider-accounts";
+import {
 	createServer,
 	createServerInputSchema,
 	deleteServer,
@@ -46,6 +51,7 @@ import {
 	powerAction,
 } from "../services/servers";
 import { addSshKey, deleteSshKey, listSshKeys } from "../services/ssh-keys";
+import { CLOSED } from "../services/statuses";
 import {
 	ensureWallet,
 	getBalance,
@@ -204,32 +210,42 @@ const accountRouter = {
 			method: "GET",
 			path: "/account",
 			tags: ["Account"],
-			summary: "Balance and burn rate",
+			summary: "Balance, fee burn rate and server spend",
 		})
 		.handler(async ({ context }) => {
 			const userId = context.actor.userId;
 			await ensureWallet(context.db, userId);
-			const [balanceMicros, burnMicrosPerHour, [active]] = await Promise.all([
+			const [balanceMicros, burn, [active], [accounts]] = await Promise.all([
 				getBalance(context.db, userId),
 				burnRate(context.db, userId),
 				context.db
 					.select({ n: count() })
 					.from(server)
 					.where(
+						and(eq(server.userId, userId), notInArray(server.status, CLOSED)),
+					),
+				context.db
+					.select({ n: count() })
+					.from(providerAccount)
+					.where(
 						and(
-							eq(server.userId, userId),
-							notInArray(server.status, ["deleted", "error"]),
+							eq(providerAccount.userId, userId),
+							isNull(providerAccount.error),
 						),
 					),
 			]);
 			return {
 				balanceMicros,
-				burnMicrosPerHour,
+				/** HessianLabs's fee across active servers, charged from the balance. */
+				burnMicrosPerHour: burn.feeMicros,
+				/** List price of active servers, billed by the providers directly. */
+				serverSpendMicrosPerHour: burn.serverMicros,
 				runwayHours:
-					burnMicrosPerHour > 0
-						? Math.max(0, balanceMicros / burnMicrosPerHour)
+					burn.feeMicros > 0
+						? Math.max(0, balanceMicros / burn.feeMicros)
 						: null,
 				activeServers: active?.n ?? 0,
+				connectedAccounts: accounts?.n ?? 0,
 				apiKey: context.apiKey ? serializeApiKey(context.apiKey) : null,
 			};
 		}),
@@ -280,6 +296,28 @@ const creditsRouter = {
 		.input(z.object({ amountUsd: z.number().positive().max(100) }))
 		.handler(({ context, input }) =>
 			addTestCredits(context, context.actor.userId, input.amountUsd),
+		),
+};
+
+/** Cloud credentials: dashboard sessions only, never API keys. */
+const providerAccountsRouter = {
+	list: sessionProcedure.handler(({ context }) =>
+		listProviderAccounts(context, context.actor.userId),
+	),
+	connect: sessionProcedure
+		.input(
+			z.object({
+				provider: z.enum(PROVIDER_IDS),
+				credentials: z.record(z.string(), z.string().max(1_000)),
+			}),
+		)
+		.handler(({ context, input }) =>
+			connectProviderAccount(context, context.actor, input),
+		),
+	disconnect: sessionProcedure
+		.input(idInput)
+		.handler(({ context, input }) =>
+			disconnectProviderAccount(context, context.actor, input.id),
 		),
 };
 
@@ -365,6 +403,13 @@ export const appRouter = {
 		paymentsEnabled: Boolean(context.config.stripe),
 		testCreditsEnabled: context.config.allowTestCredits,
 		githubAuth: context.config.githubAuth,
+		/** HessianLabs's fee as a percentage of each server's list price. */
+		feePercent: context.config.feeBps / 100,
+		/** "sandbox" when every provider is simulated (development). */
+		cloudMode: context.cloud.mode,
+		connectableProviders: PROVIDER_IDS.filter((id) =>
+			context.cloud.connectable(id),
+		),
 		mcpUrl: `${context.config.apiUrl}/mcp`,
 		apiUrl: `${context.config.apiUrl}/v1`,
 		topup: {
@@ -378,6 +423,7 @@ export const appRouter = {
 	servers: serversRouter,
 	account: accountRouter,
 	credits: creditsRouter,
+	providerAccounts: providerAccountsRouter,
 	apiKeys: apiKeysRouter,
 	sshKeys: sshKeysRouter,
 	activity: activityRouter,

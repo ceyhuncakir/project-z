@@ -7,7 +7,8 @@ export type ServerStatus =
 	| "suspended"
 	| "deleting"
 	| "deleted"
-	| "error";
+	| "error"
+	| "detached";
 
 const STYLES: Record<ServerStatus, { dot: string; label: string }> = {
 	provisioning: { dot: "bg-warn animate-pulse-dot", label: "Provisioning" },
@@ -17,6 +18,7 @@ const STYLES: Record<ServerStatus, { dot: string; label: string }> = {
 	deleting: { dot: "bg-muted-foreground animate-pulse-dot", label: "Deleting" },
 	deleted: { dot: "bg-border", label: "Deleted" },
 	error: { dot: "bg-destructive", label: "Failed" },
+	detached: { dot: "bg-border", label: "Detached" },
 };
 
 export function StatusDot({

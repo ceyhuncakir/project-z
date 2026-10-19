@@ -31,7 +31,7 @@ import { formatUsd, timeAgo } from "@/lib/format";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_app/keys")({
-	head: () => ({ meta: [{ title: "API keys — Switchyard" }] }),
+	head: () => ({ meta: [{ title: "API keys — HessianLabs" }] }),
 	component: KeysPage,
 });
 
@@ -234,6 +234,9 @@ function KeysPage() {
 						<div className="grid grid-cols-2 gap-3">
 							<div className="space-y-1.5">
 								<Label htmlFor="key-limit">Spend limit (USD)</Label>
+								<p className="text-[11px] text-muted-foreground">
+									Server cost at list price
+								</p>
 								<Input
 									id="key-limit"
 									type="number"

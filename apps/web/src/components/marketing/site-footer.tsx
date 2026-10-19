@@ -50,7 +50,7 @@ export function SiteFooter() {
 				<div className="col-span-2 space-y-3 md:col-span-1">
 					<Logo />
 					<p className="max-w-xs text-muted-foreground text-sm">
-						{site.tagline}. Pay by the minute, from one balance.
+						{site.tagline}. Your accounts, your bill, one router.
 					</p>
 				</div>
 				{COLUMNS.map((col) => (
@@ -99,7 +99,7 @@ export function SiteFooter() {
 							{site.cloudProviders.filter((p) => !p.preview).length} live ·{" "}
 							{site.providers.length -
 								site.cloudProviders.filter((p) => !p.preview).length}{" "}
-							preview
+							coming soon
 						</li>
 					</ul>
 				</div>
@@ -107,7 +107,7 @@ export function SiteFooter() {
 			<div className="border-t">
 				<p className="mx-auto max-w-6xl px-5 py-4 font-mono text-[11px] text-muted-foreground">
 					© {new Date().getFullYear()} {site.name}. Provider names are
-					trademarks of their owners; Switchyard is not affiliated with them.
+					trademarks of their owners; HessianLabs is not affiliated with them.
 				</p>
 			</div>
 		</footer>

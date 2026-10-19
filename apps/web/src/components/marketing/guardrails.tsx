@@ -13,7 +13,7 @@ const ITEMS = [
 	{
 		icon: KeyRoundIcon,
 		title: "Spend caps per key",
-		body: "Each API key has a lifetime budget. Once it's spent, that key can't create anything else.",
+		body: "Each API key has a lifetime budget, measured at provider list prices. Once it's spent, that key can't create anything else.",
 	},
 	{
 		icon: ServerCogIcon,
@@ -22,13 +22,13 @@ const ITEMS = [
 	},
 	{
 		icon: CreditCardIcon,
-		title: "Prepaid, with auto top-up",
-		body: "Credits are bought up front through Stripe. Opt in to top up from a saved card when the balance runs low.",
+		title: "Prepaid fee, with auto top-up",
+		body: "HessianLabs's fee comes from credits bought up front through Stripe. Opt in to top up from a saved card when the balance runs low.",
 	},
 	{
 		icon: BanIcon,
-		title: "Stops at zero",
-		body: "At a zero balance servers power off. After 24 hours without credit they're destroyed — never an open-ended bill.",
+		title: "Your servers stay yours",
+		body: "An empty balance only blocks new servers. Running ones are never powered off or deleted over our fee — they live in your account.",
 	},
 	{
 		icon: EyeIcon,
@@ -38,7 +38,7 @@ const ITEMS = [
 	{
 		icon: LockIcon,
 		title: "Secrets stay secret",
-		body: "API keys are stored as hashes. SSH keys go in through per-server cloud-init, never a shared provider key store.",
+		body: "Cloud tokens are encrypted (AES-256-GCM) and never shown again; API keys are stored as hashes. SSH keys go in through cloud-init, never your account's key store.",
 	},
 ];
 
@@ -48,7 +48,7 @@ export function Guardrails() {
 			<SectionIntro
 				index="09"
 				label="Guardrails"
-				title="Give an agent a card without giving it your card."
+				title="Give an agent a budget, not your whole cloud account."
 			/>
 			<ul className="mt-12 grid grid-cols-1 gap-px border bg-border sm:grid-cols-2 lg:grid-cols-3">
 				{ITEMS.map(({ icon: Icon, title, body }, i) => (

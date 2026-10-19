@@ -38,7 +38,7 @@ export const Route = createFileRoute("/_app/credits")({
 		session_id: z.string().optional(),
 		canceled: z.coerce.boolean().optional(),
 	}),
-	head: () => ({ meta: [{ title: "Credits — Switchyard" }] }),
+	head: () => ({ meta: [{ title: "Credits — HessianLabs" }] }),
 	component: CreditsPage,
 });
 
@@ -109,7 +109,7 @@ function CreditsPage() {
 		<>
 			<PageHeader
 				title="Credits"
-				description="One prepaid balance for every provider. Usage is charged per minute at provider list prices."
+				description="Credits pay HessianLabs's fee, charged per minute while your servers run. Your providers bill the servers themselves to your own accounts."
 				actions={
 					billing.data?.paymentsEnabled && (
 						<Button
@@ -130,7 +130,7 @@ function CreditsPage() {
 							value={o ? formatUsd(o.balanceMicros) : "—"}
 						/>
 						<Stat
-							label="Burn rate"
+							label="Fee rate"
 							value={
 								o
 									? `${formatUsd(o.burnMicrosPerHour, { precise: true })}/h`

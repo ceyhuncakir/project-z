@@ -12,7 +12,7 @@ import { timeAgo } from "@/lib/format";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_app/ssh-keys")({
-	head: () => ({ meta: [{ title: "SSH keys — Switchyard" }] }),
+	head: () => ({ meta: [{ title: "SSH keys — HessianLabs" }] }),
 	component: SshKeysPage,
 });
 

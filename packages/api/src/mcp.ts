@@ -7,6 +7,8 @@ import {
 	LLM_MODELS,
 	type PlanFilters,
 	PROVIDER_IDS,
+	PROVIDERS,
+	type ProviderId,
 } from "@switchyard/cloud";
 import { z } from "zod";
 
@@ -19,6 +21,7 @@ import {
 	searchPlans,
 	sizeLlm,
 } from "./services/catalog";
+import { workingAccounts } from "./services/connections";
 import {
 	createServer,
 	deleteServer,
@@ -29,17 +32,22 @@ import {
 } from "./services/servers";
 import { getBalance } from "./services/wallet";
 
-const INSTRUCTIONS = `Switchyard provisions Linux servers from one prepaid balance across general clouds (Hetzner, DigitalOcean, Vultr, Akamai Linode, OVHcloud, Scaleway, UpCloud, Contabo, Civo, Exoscale) and GPU clouds for LLM hosting (RunPod, Lambda, Vast.ai, CoreWeave, Paperspace, Nebius, Hyperstack).
+function instructions(svc: Services) {
+	const providers = PROVIDER_IDS.filter((id) => svc.cloud.connectable(id));
+	const names = providers.map((id) => PROVIDERS[id].name).join(", ");
+	const gpu = providers.some((id) => PROVIDERS[id].category === "gpu");
+	return `HessianLabs provisions Linux servers in the cloud accounts this user has connected (available: ${names}). The provider bills the user for each server directly; HessianLabs charges a fee of ${svc.config.feeBps / 100}% of the server's list price from a prepaid balance.
 
 Typical flow:
-1. create_server with requirements (e.g. min_memory_gb: 4, continents: ["EU"]) — the router picks the cheapest matching plan and falls back to the next provider if one is out of capacity. Use search_plans first only if you want to compare options or pin an exact plan_id.
+1. create_server with requirements (e.g. min_memory_gb: 4, continents: ["EU"]) — the router picks the cheapest matching plan on the connected accounts and falls back to the next one if a provider is out of capacity. Use search_plans first only if you want to compare options or pin an exact plan_id.
 2. get_server with wait_for_running_seconds: 90 until status is "running" and ipv4 is set.
 3. SSH in as root. If you passed no SSH key, create_server returns a one-time private key: save it to a file with mode 600.
-4. delete_server as soon as the work is done. Billing is per minute with a one-hour minimum per server; stopped servers are still billed.
+4. delete_server as soon as the work is done. A server costs money for as long as it exists, stopped or not, with a one-hour minimum.
 
-For GPUs / LLM serving: call size_llm with the model to get the VRAM it needs, then create_server with min_vram_gb (GPU plans default to Ubuntu 22.04 + CUDA).
-
-Prices are USD. Check get_balance before large jobs.`;
+If a tool says no account is connected, ask the user to connect one at ${svc.config.webUrl}/providers.
+${gpu ? "\nFor GPUs / LLM serving: call size_llm with the model to get the VRAM it needs, then create_server with min_vram_gb (GPU plans default to Ubuntu 22.04 + CUDA).\n" : ""}
+Prices are USD list prices. Check get_balance before large jobs.`;
+}
 
 const filterShape = {
 	min_vcpu: z.number().positive().optional().describe("Minimum vCPUs"),
@@ -127,7 +135,9 @@ function agentServer(s: SerializedServer) {
 		ipv6: s.ipv6,
 		ssh: s.ipv4 ? `ssh root@${s.ipv4}` : null,
 		price_per_hour: formatUsd(s.priceHourlyMicros, { precise: true }),
+		fee_per_hour: formatUsd(s.feeHourlyMicros, { precise: true }),
 		cost_so_far: formatUsd(s.totalCostMicros, { precise: true }),
+		fees_so_far: formatUsd(s.totalFeeMicros, { precise: true }),
 		sandbox: s.sandbox || undefined,
 		error: s.errorMessage ?? undefined,
 		created_at: s.createdAt,
@@ -151,16 +161,29 @@ async function run(fn: () => Promise<unknown>): Promise<CallToolResult> {
 export function createMcpServer(svc: Services, key: ApiKeyRecord) {
 	const actor: Actor = { userId: key.userId, apiKeyId: key.id, via: "mcp" };
 	const mcp = new McpServer(
-		{ name: "switchyard", title: "Switchyard", version: "1.0.0" },
-		{ instructions: INSTRUCTIONS },
+		{ name: "hessianlabs", title: "HessianLabs", version: "1.0.0" },
+		{ instructions: instructions(svc) },
 	);
+
+	/** Searches only cover providers this user can create servers on. */
+	async function connectedProviders(requested?: ProviderId[]) {
+		const connected = [...(await workingAccounts(svc.db, actor.userId)).keys()];
+		if (!connected.length) {
+			throw new Error(
+				`No cloud account is connected yet. Ask the user to connect one at ${svc.config.webUrl}/providers.`,
+			);
+		}
+		return requested
+			? requested.filter((p) => connected.includes(p))
+			: connected;
+	}
 
 	mcp.registerTool(
 		"search_plans",
 		{
 			title: "Search server plans",
 			description:
-				"Search plans across every provider, cheapest first. Returns plan ids usable with create_server.",
+				"Search plans on the user's connected cloud accounts, cheapest first. Returns plan ids usable with create_server.",
 			inputSchema: {
 				...filterShape,
 				sort: z.enum(["price", "vcpu", "memory"]).optional(),
@@ -177,7 +200,10 @@ export function createMcpServer(svc: Services, key: ApiKeyRecord) {
 		(args) =>
 			run(async () => {
 				const res = await searchPlans(svc, {
-					filters: toFilters(args),
+					filters: {
+						...toFilters(args),
+						providers: await connectedProviders(args.providers),
+					},
 					sort: args.sort,
 					limit: args.limit ?? 10,
 				});
@@ -230,11 +256,16 @@ export function createMcpServer(svc: Services, key: ApiKeyRecord) {
 		},
 		(args) =>
 			run(async () => {
-				const res = await sizeLlm(svc, {
-					model: args.model,
-					paramsB: args.params_b,
-					precision: args.precision,
-				});
+				const res = await sizeLlm(
+					svc,
+					{
+						model: args.model,
+						paramsB: args.params_b,
+						precision: args.precision,
+					},
+					5,
+					await connectedProviders(),
+				);
 				return {
 					model: res.model,
 					precision: res.precision,
@@ -281,23 +312,25 @@ export function createMcpServer(svc: Services, key: ApiKeyRecord) {
 		{
 			title: "List providers",
 			description:
-				"Providers behind Switchyard, with region/plan counts and starting price.",
+				"Providers HessianLabs supports, whether the user has connected an account for each, region/plan counts and starting price.",
 			annotations: { readOnlyHint: true, openWorldHint: false },
 		},
 		() =>
-			run(async () =>
-				(await listProviders(svc)).map((p) => ({
+			run(async () => {
+				const accounts = await workingAccounts(svc.db, actor.userId);
+				return (await listProviders(svc)).map((p) => ({
 					provider: p.id,
 					name: p.name,
 					category: p.category,
-					mode: p.preview ? "preview (simulated)" : p.mode,
+					connected: accounts.has(p.id),
+					available: p.connectable ? undefined : "coming soon",
 					regions: p.regions,
 					plans: p.plans,
 					from_per_hour: p.fromHourlyMicros
 						? formatUsd(p.fromHourlyMicros, { precise: true })
 						: null,
-				})),
-			),
+				}));
+			}),
 	);
 
 	mcp.registerTool(
@@ -315,7 +348,7 @@ export function createMcpServer(svc: Services, key: ApiKeyRecord) {
 		{
 			title: "Create server",
 			description:
-				"Provision a server. Give plan_id for an exact plan, or requirements (min_vcpu, min_memory_gb, continents, max_hourly_usd, …) and the cheapest match is chosen with automatic fallback across providers. Billed per minute from your balance (one-hour minimum).",
+				"Provision a server in one of the user's connected cloud accounts. Give plan_id for an exact plan, or requirements (min_vcpu, min_memory_gb, continents, max_hourly_usd, …) and the cheapest match is chosen with automatic fallback across providers. The provider bills the server; HessianLabs's fee is charged per minute from the balance (one-hour minimum).",
 			inputSchema: {
 				plan_id: z
 					.string()
@@ -434,7 +467,7 @@ export function createMcpServer(svc: Services, key: ApiKeyRecord) {
 		{
 			title: "Start, stop or reboot",
 			description:
-				"Power actions. Stopped servers are still billed by providers — delete to stop billing.",
+				"Power actions. Stopped servers are still billed by providers, and still carry the fee — delete to stop both.",
 			inputSchema: {
 				id: z.string(),
 				action: z.enum(["start", "stop", "reboot"]),
@@ -456,7 +489,7 @@ export function createMcpServer(svc: Services, key: ApiKeyRecord) {
 		{
 			title: "Delete server",
 			description:
-				"Permanently destroy a server and its disk. Stops billing. Cannot be undone.",
+				"Permanently destroy a server and its disk at the provider. Stops billing and the fee. Cannot be undone.",
 			inputSchema: { id: z.string() },
 			annotations: {
 				readOnlyHint: false,
@@ -471,6 +504,7 @@ export function createMcpServer(svc: Services, key: ApiKeyRecord) {
 				return {
 					deleted: s.id,
 					final_cost: formatUsd(s.totalCostMicros, { precise: true }),
+					fees: formatUsd(s.totalFeeMicros, { precise: true }),
 				};
 			}),
 	);
@@ -480,7 +514,7 @@ export function createMcpServer(svc: Services, key: ApiKeyRecord) {
 		{
 			title: "Get balance",
 			description:
-				"Credit balance, hourly burn rate, runway and this API key's spend limit.",
+				"Credit balance (it pays HessianLabs's fee), the fee burn rate and runway, what active servers cost at their providers, and this API key's spend limit.",
 			annotations: { readOnlyHint: true, openWorldHint: false },
 		},
 		() =>
@@ -491,11 +525,15 @@ export function createMcpServer(svc: Services, key: ApiKeyRecord) {
 				]);
 				return {
 					balance: formatUsd(balance),
-					burn_per_hour: formatUsd(burn, { precise: true }),
-					runway_hours: burn > 0 ? Math.floor(balance / burn) : null,
+					fee_per_hour: formatUsd(burn.feeMicros, { precise: true }),
+					runway_hours:
+						burn.feeMicros > 0 ? Math.floor(balance / burn.feeMicros) : null,
+					servers_per_hour_at_providers: formatUsd(burn.serverMicros, {
+						precise: true,
+					}),
 					api_key: {
 						name: key.name,
-						spent: formatUsd(key.spentMicros),
+						spent_at_providers: formatUsd(key.spentMicros),
 						spend_limit:
 							key.spendLimitMicros === null
 								? null

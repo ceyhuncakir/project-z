@@ -29,11 +29,11 @@ export const Route = createFileRoute("/catalog")({
 		context.queryClient.prefetchQuery(plansQuery(deps)),
 	head: () => ({
 		meta: [
-			{ title: "Server catalog — Switchyard" },
+			{ title: "Server catalog — HessianLabs" },
 			{
 				name: "description",
 				content:
-					"Compare VPS and GPU plans from 17 clouds — Hetzner, DigitalOcean, Vultr, RunPod, Lambda and more — in one table.",
+					"Compare VPS plans from Hetzner, DigitalOcean, Vultr, Akamai Linode, OVHcloud and Scaleway — plus GPU clouds coming soon — in one table.",
 			},
 		],
 	}),
@@ -45,7 +45,7 @@ function CatalogPage() {
 	const navigate = useNavigate({ from: Route.fullPath });
 	const plans = useQuery(plansQuery(search));
 	const providers = useQuery(orpc.catalog.providers.queryOptions());
-	const sandbox = providers.data?.some((p) => p.mode === "sandbox");
+	const comingSoon = providers.data?.some((p) => !p.connectable);
 
 	return (
 		<div className="flex min-h-svh flex-col">
@@ -60,7 +60,8 @@ function CatalogPage() {
 						<p className="mt-3 max-w-xl text-muted-foreground text-sm">
 							The same catalog your agent searches with{" "}
 							<code className="font-mono text-[12px]">search_plans</code>.
-							Prices are per provider list price, in USD, billed per minute.
+							Prices are provider list prices in USD, billed by the provider to
+							your own account.
 						</p>
 					</div>
 					{providers.data && (
@@ -84,11 +85,11 @@ function CatalogPage() {
 						</div>
 					)}
 				</div>
-				{sandbox && (
+				{comingSoon && (
 					<p className="mt-6 border border-warn/40 bg-warn/10 px-3 py-2 font-mono text-[11px]">
-						Providers marked <span className="text-signal">°</span> / preview
-						are simulated with indicative prices, as are any providers without
-						platform API credentials configured.
+						Providers marked <span className="text-signal">°</span> are coming
+						soon: listed with indicative prices, but they can't be connected
+						yet.
 					</p>
 				)}
 				<CatalogFilters

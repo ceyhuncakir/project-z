@@ -12,7 +12,10 @@ import { TrackBackground } from "./track-background";
 export const providersQuery = orpc.catalog.providers.queryOptions();
 
 export function Hero() {
-	const { data } = useQuery(providersQuery);
+	const { data: all } = useQuery(providersQuery);
+	const meta = useQuery(orpc.meta.queryOptions());
+	// Stats cover the clouds you can connect today, not the coming-soon ones.
+	const data = all?.filter((p) => p.connectable);
 	const regions = data?.reduce((n, p) => n + p.regions, 0) ?? 0;
 	const plans = data?.reduce((n, p) => n + p.plans, 0) ?? 0;
 	const from = data?.reduce<number | null>(
@@ -24,7 +27,7 @@ export function Hero() {
 	);
 
 	const stats = [
-		{ label: "providers", value: data?.length ?? 17 },
+		{ label: "clouds", value: data?.length ?? 6 },
 		{ label: "regions", value: regions },
 		{ label: "plans", value: plans },
 	];
@@ -41,10 +44,12 @@ export function Hero() {
 					Give your agent a server room.
 				</h1>
 				<p className="mx-auto mt-6 max-w-2xl text-balance text-base text-muted-foreground leading-relaxed sm:text-lg">
-					One MCP endpoint and one prepaid balance for 17 clouds — Hetzner,
-					DigitalOcean and Vultr to GPU clouds like RunPod and Lambda. Your
-					agent says what it needs; Switchyard finds the cheapest machine that
-					fits, bills it by the minute, and tears it down when the job is done.
+					One MCP endpoint in front of your own cloud accounts — Hetzner,
+					DigitalOcean, Vultr, Linode, OVHcloud and Scaleway today, GPU clouds
+					soon. Your agent says what it needs; HessianLabs finds the cheapest
+					machine that fits, launches it in your account, and tears it down when
+					the job is done. Your provider bills you as usual; we charge{" "}
+					{meta.data?.feePercent ?? 5}% of the server's price.
 				</p>
 				<div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
 					<Link

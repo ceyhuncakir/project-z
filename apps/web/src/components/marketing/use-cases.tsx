@@ -12,8 +12,8 @@ const CASES = [
 		prompt:
 			"Run the integration suite on a fresh 4 vCPU box, then tear it down.",
 		call: `create_server({\n  min_vcpu: 4,\n  min_memory_gb: 8,\n  continents: ["EU"],\n  labels: { job: "integration" }\n})\n// … run the suite over SSH, then\ndelete_server({ id })`,
-		result: "contabo:cloud-vps-10 · Nuremberg · $0.0075/h",
-		cost: "≈ $0.0075 per run",
+		result: "hetzner:cx33 · Nuremberg · $0.0089/h",
+		cost: "≈ $0.009 per run, plus the fee",
 		note: "One-hour minimum per server, however short the run.",
 	},
 	{
@@ -23,15 +23,15 @@ const CASES = [
 		call: `size_llm({ model: "llama-3.3-70b", precision: "int8" })\n// → 85 GB VRAM\ncreate_server({ min_vram_gb: 85 })`,
 		result: "lambda:gpu_1x_gh200 · Virginia · $1.49/h",
 		cost: "≈ $3 for a two-hour eval",
-		note: "GPU clouds are in preview: simulated, with indicative prices.",
+		note: "GPU clouds are coming soon; prices shown are indicative.",
 	},
 	{
 		id: "dev",
 		label: "Ephemeral dev boxes",
 		prompt: "Give me an Ubuntu box in Singapore to debug a latency issue.",
 		call: `create_server({\n  countries: ["SG"],\n  min_memory_gb: 2,\n  image: "ubuntu-24.04"\n})`,
-		result: "contabo:cloud-vps-10 · Singapore · $0.0075/h",
-		cost: "≈ $0.18 per day",
+		result: "vultr:vc2-1c-2gb · Singapore · $0.0149/h",
+		cost: "≈ $0.36 per day",
 		note: "Your saved SSH keys are installed automatically.",
 	},
 	{
@@ -40,9 +40,9 @@ const CASES = [
 		prompt:
 			"Run the crawler from the US, Germany and Japan, then merge the results.",
 		call: `// three calls, one per country\ncreate_server({ countries: ["US"] })\ncreate_server({ countries: ["DE"] })\ncreate_server({ countries: ["JP"] })`,
-		result: "3 servers · 3 countries · one balance",
+		result: "3 servers · 3 countries · your accounts",
 		cost: "≈ $0.02 per hour for all three",
-		note: "Each server is billed per minute from the same balance.",
+		note: "Each provider bills its own server; the fee comes from one balance.",
 	},
 	{
 		id: "load",

@@ -117,6 +117,10 @@ export function createDigitalOceanAdapter(
 	return {
 		info: liveInfo(info),
 
+		async verify() {
+			await api({ path: "/account" });
+		},
+
 		async listRegions() {
 			const regions = await list<DORegion>("/regions", "regions");
 			return regions
@@ -161,7 +165,7 @@ export function createDigitalOceanAdapter(
 
 		createServer: (input) =>
 			capacityAware(provider, async () => {
-				// No `ssh_keys`: DO keys are account-wide (shared by all tenants), so cloud-init carries them.
+				// No `ssh_keys`: DO keys are account-wide, so cloud-init carries them instead.
 				// Side effect: DO emails a root password to the account owner (password SSH is off via cloud-init).
 				const { droplet } = await api<{ droplet: DODroplet }>({
 					method: "POST",
@@ -174,8 +178,8 @@ export function createDigitalOceanAdapter(
 						user_data: input.userData,
 						ipv6: true,
 						tags: [
-							"switchyard",
-							`switchyard-${input.serverId.replace(/[^a-zA-Z0-9_:-]/g, "_")}`,
+							"hessianlabs",
+							`hessianlabs-${input.serverId.replace(/[^a-zA-Z0-9_:-]/g, "_")}`,
 						],
 					},
 				});

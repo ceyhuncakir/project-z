@@ -25,12 +25,13 @@ import { toast } from "sonner";
 import { ActivityList } from "@/components/app/activity-list";
 import { Panel } from "@/components/app/app-shell";
 import { CopyButton } from "@/components/copy-button";
+import { ProviderLogo } from "@/components/provider-logo";
 import { StatusLabel } from "@/components/status";
 import { flag, formatUsd, timeAgo } from "@/lib/format";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_app/servers/$serverId")({
-	head: () => ({ meta: [{ title: "Server — Switchyard" }] }),
+	head: () => ({ meta: [{ title: "Server — HessianLabs" }] }),
 	component: ServerPage,
 });
 
@@ -79,7 +80,7 @@ function ServerPage() {
 		orpc.servers.delete.mutationOptions({
 			onSuccess: (s) => {
 				toast.success(
-					`${s.name} deleted · final cost ${formatUsd(s.totalCostMicros, { precise: true })}`,
+					`${s.name} deleted · fees ${formatUsd(s.totalFeeMicros, { precise: true })}`,
 				);
 				refresh();
 				navigate({ to: "/servers" });
@@ -105,7 +106,7 @@ function ServerPage() {
 	if (!s) return <div className="h-64 animate-pulse border bg-card" />;
 
 	const ssh = s.ipv4 ? `ssh root@${s.ipv4}` : null;
-	const live = s.status !== "deleted" && s.status !== "error";
+	const live = !["deleted", "error", "detached"].includes(s.status);
 	const busy = action.isPending || destroy.isPending;
 
 	return (
@@ -119,6 +120,7 @@ function ServerPage() {
 			<div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
 				<div>
 					<div className="flex flex-wrap items-center gap-3">
+						<ProviderLogo provider={s.provider} className="size-8" />
 						<h1 className="font-medium text-2xl tracking-tight">{s.name}</h1>
 						<StatusLabel status={s.status} />
 						{s.sandbox && <Badge variant="warn">sandbox</Badge>}
@@ -167,10 +169,12 @@ function ServerPage() {
 				)}
 			</div>
 
-			{s.status === "suspended" && (
-				<p className="mb-6 border border-destructive/40 bg-destructive/10 px-4 py-3 text-[13px]">
-					Suspended because your balance reached zero. Add credits and start it
-					within 24 hours, or it will be destroyed.
+			{s.status === "detached" && (
+				<p className="mb-6 border border-warn/40 bg-warn/10 px-4 py-3 text-[13px]">
+					HessianLabs no longer manages this server: its {s.providerName}{" "}
+					account was disconnected or stopped accepting the saved credentials.
+					If it still exists, it keeps running (and billing) in your{" "}
+					{s.providerName} account; manage or delete it there.
 				</p>
 			)}
 			{s.status === "error" && s.errorMessage && (
@@ -213,14 +217,30 @@ function ServerPage() {
 				</Panel>
 				<Panel title="Billing">
 					<dl className="divide-y">
-						<Row label="Price">
+						<Row label="List price">
 							<span className="tabular font-mono">
 								{formatUsd(s.priceHourlyMicros, { precise: true })} / hour
+							</span>{" "}
+							<span className="text-muted-foreground">
+								billed by {s.providerName}
 							</span>
 						</Row>
-						<Row label="Cost so far">
+						<Row label="HessianLabs fee">
+							<span className="tabular font-mono">
+								{formatUsd(s.feeHourlyMicros, { precise: true })} / hour
+							</span>{" "}
+							<span className="text-muted-foreground">from your credits</span>
+						</Row>
+						<Row label="So far">
 							<span className="tabular font-mono">
 								{formatUsd(s.totalCostMicros, { precise: true })}
+							</span>{" "}
+							<span className="text-muted-foreground">
+								at {s.providerName} (est.) ·{" "}
+								<span className="tabular font-mono text-foreground">
+									{formatUsd(s.totalFeeMicros, { precise: true })}
+								</span>{" "}
+								in fees
 							</span>
 						</Row>
 						<Row label="Created">

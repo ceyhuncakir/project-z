@@ -67,7 +67,7 @@ export function AuthForm({
 					</h1>
 					<p className="mt-2 text-muted-foreground text-sm">
 						{mode === "signup"
-							? "Add credits, connect your agent, ship servers."
+							? "Connect your cloud, add credits, let your agent ship servers."
 							: `Sign in to ${site.name}.`}
 					</p>
 
@@ -203,9 +203,9 @@ function AuthAside() {
 			</blockquote>
 			<div className="relative grid grid-cols-3 gap-px bg-background/10 font-mono text-[11px]">
 				{[
-					["6", "providers"],
-					["per-min", "billing"],
-					["1", "balance"],
+					["6", "clouds"],
+					["your", "accounts"],
+					["1", "MCP endpoint"],
 				].map(([v, k]) => (
 					<div key={k} className="bg-foreground p-3">
 						<p className="text-background text-lg">{v}</p>

@@ -17,6 +17,7 @@ export const Route = createFileRoute("/docs")({
 
 const TOC = [
 	["quickstart", "Quickstart"],
+	["accounts", "Cloud accounts"],
 	["tools", "MCP tools"],
 	["routing", "Routing & fallback"],
 	["gpu", "GPUs & LLM hosting"],
@@ -29,33 +30,45 @@ const TOC = [
 const TOOLS: [string, string, string][] = [
 	[
 		"search_plans",
-		"Compare plans across providers, cheapest first.",
+		"Compare plans on your connected accounts, cheapest first.",
 		"min_vcpu, min_memory_gb, continents, max_hourly_usd, sort",
 	],
 	[
 		"create_server",
-		"Provision by exact plan_id or by requirements (auto-routed).",
+		"Provision in a connected account, by exact plan_id or by requirements (auto-routed).",
 		"plan_id | requirements, image, ssh_public_keys, user_data",
 	],
 	[
 		"get_server",
-		"Status, IPs and cost. Can block until running.",
+		"Status, IPs, price, fee and cost so far. Can block until running.",
 		"id, wait_for_running_seconds",
 	],
 	["list_servers", "Active servers on the account.", "include_deleted"],
 	["server_action", "Start, stop or reboot.", "id, action"],
-	["delete_server", "Destroy a server and stop billing.", "id"],
-	["get_balance", "Balance, burn rate, runway, key limits.", "—"],
+	[
+		"delete_server",
+		"Destroy a server at the provider; stops billing and the fee.",
+		"id",
+	],
+	[
+		"get_balance",
+		"Credits, fee per hour, runway, server spend at providers, key limits.",
+		"—",
+	],
 	[
 		"list_regions",
 		"Regions by provider, country or continent.",
 		"providers, countries, continents",
 	],
-	["list_providers", "Providers with plan counts and starting price.", "—"],
+	[
+		"list_providers",
+		"Providers, whether you've connected each, plan counts and starting price.",
+		"—",
+	],
 	["list_images", "OS images available everywhere.", "—"],
 	[
 		"size_llm",
-		"VRAM needed for an open-weight model + cheapest GPU plans that fit.",
+		"VRAM needed for an open-weight model + cheapest GPU plans on your accounts (GPU clouds coming soon).",
 		"model | params_b, precision",
 	],
 ];
@@ -109,17 +122,36 @@ function DocsPage() {
 
 					<Section id="quickstart" title="Quickstart">
 						<p>
-							<strong>1. Create an API key</strong> on the{" "}
+							<strong>1. Connect a cloud account</strong> on the{" "}
+							<Link
+								to="/providers"
+								className="text-foreground underline underline-offset-4"
+							>
+								Providers
+							</Link>{" "}
+							page: paste an API token for Hetzner, DigitalOcean, Vultr, Akamai
+							Linode, OVHcloud or Scaleway. Servers are created there.
+						</p>
+						<p>
+							<strong>2. Add credits and create an API key.</strong> Credits on
+							the{" "}
+							<Link
+								to="/credits"
+								className="text-foreground underline underline-offset-4"
+							>
+								Credits
+							</Link>{" "}
+							page pay HessianLabs's fee. Create a key on the{" "}
 							<Link
 								to="/keys"
 								className="text-foreground underline underline-offset-4"
 							>
 								API keys
 							</Link>{" "}
-							page. Give it a spend limit if an agent will hold it.
+							page and give it a spend limit if an agent will hold it.
 						</p>
 						<p>
-							<strong>2. Add the MCP server</strong> to your client. The
+							<strong>3. Add the MCP server</strong> to your client. The
 							endpoint is{" "}
 							<code className="font-mono text-[13px] text-foreground">
 								{MCP_URL}
@@ -128,7 +160,7 @@ function DocsPage() {
 						</p>
 						<McpSnippets mcpUrl={MCP_URL} />
 						<p>
-							<strong>3. Ask for a server.</strong> For example:
+							<strong>4. Ask for a server.</strong> For example:
 						</p>
 						<CodeBlock
 							compact
@@ -139,6 +171,31 @@ function DocsPage() {
 								},
 							]}
 						/>
+					</Section>
+
+					<Section id="accounts" title="Cloud accounts">
+						<p>
+							HessianLabs creates servers in <strong>your own accounts</strong>.
+							Each provider bills you directly at its list price, under its own
+							terms; HessianLabs only charges its fee. You can connect one
+							account per provider: Hetzner, DigitalOcean, Vultr, Akamai Linode,
+							OVHcloud and Scaleway today. UpCloud, Contabo, Civo, Exoscale and
+							the GPU clouds are coming soon.
+						</p>
+						<p>
+							Credentials are checked with the provider when you add them, then{" "}
+							<strong>encrypted with AES-256-GCM</strong> and never shown again.
+							Use a token that can only manage servers — for Hetzner, a project
+							just for HessianLabs — and revoke it at the provider whenever you
+							like.
+						</p>
+						<p>
+							Every few minutes HessianLabs checks your servers with their
+							provider. A server deleted in the provider's console stops its fee
+							within about five minutes. If you disconnect an account, or its
+							token stops working, its servers are <strong>detached</strong>:
+							they keep running in your account, unmanaged and with no fee.
+						</p>
 					</Section>
 
 					<Section id="tools" title="MCP tools">
@@ -181,9 +238,10 @@ function DocsPage() {
 								hetzner:cx23
 							</code>
 							) to pin a provider, or pass requirements and let the router
-							decide. It ranks every plan that satisfies them by hourly price
-							and tries up to three candidates — at most two per provider — so a
-							capacity shortage at one provider falls through to the next.
+							decide. It ranks every plan on your connected accounts that
+							satisfies them by hourly price and tries up to three candidates —
+							at most two per provider — so a capacity shortage at one provider
+							falls through to the next.
 						</p>
 						<CodeBlock
 							compact
@@ -206,8 +264,8 @@ function DocsPage() {
 							must save it.
 						</p>
 						<p>
-							Keys are delivered with cloud-init, not the providers' account key
-							stores, so they never leak between customers. Pass{" "}
+							Keys are delivered with cloud-init, so your account's own key
+							store is left alone. Pass{" "}
 							<code className="font-mono text-[13px] text-foreground">
 								user_data
 							</code>{" "}
@@ -219,7 +277,9 @@ function DocsPage() {
 					<Section id="gpu" title="GPUs & LLM hosting">
 						<p>
 							GPU clouds — RunPod, Lambda, Vast.ai, CoreWeave, Paperspace,
-							Nebius and Hyperstack — sit in the same catalog. Searches return
+							Nebius and Hyperstack — are <strong>coming soon</strong>. They sit
+							in the catalog with indicative prices but can't be connected until
+							their live integrations ship. Once they can, searches still return
 							CPU plans unless you ask for GPUs with{" "}
 							<code className="font-mono text-[13px] text-foreground">
 								kind: "gpu"
@@ -242,9 +302,7 @@ function DocsPage() {
 						<p>
 							Not sure what a model needs? <strong>size_llm</strong> estimates
 							VRAM as weights × 1.2 (room for KV cache at moderate context) and
-							lists the cheapest plans that fit. GPU clouds are in{" "}
-							<strong>preview</strong>: they are simulated with indicative
-							prices until their live integrations ship.
+							lists the cheapest plans that fit on your connected accounts.
 						</p>
 						<CodeBlock
 							compact
@@ -263,31 +321,33 @@ function DocsPage() {
 
 					<Section id="billing" title="Billing">
 						<p>
-							Hourly prices are the providers' list prices, passed through.
-							Usage is charged <strong>per minute</strong> from your balance
-							with a <strong>one-hour minimum</strong> per server. Stopped
-							servers still bill (providers keep the disk reserved) — delete to
-							stop billing. Credits carry a 5% top-up fee (minimum $0.50).
+							Your provider bills each server to your own account at its list
+							price. HessianLabs charges a <strong>fee</strong>: a percentage of
+							that list price, fixed when the server is created, charged{" "}
+							<strong>per minute</strong> from your credits with a{" "}
+							<strong>one-hour minimum</strong> per server. Stopped servers
+							still cost money at the provider and still carry the fee — delete
+							to stop both. Top-ups carry a 5% fee (minimum $0.50).
 						</p>
 						<p>
 							Top-ups are paid through <strong>Stripe Checkout</strong>; the fee
 							shows as its own line item and Stripe emails a receipt. Save the
 							card at checkout to turn on <strong>auto top-up</strong>: when the
 							balance drops below your threshold, the card is charged
-							off-session so servers never get suspended mid-job. Refunds remove
-							the matching credit.
+							off-session so your agents can keep creating servers. Refunds
+							remove the matching credit.
 						</p>
 					</Section>
 
 					<Section id="safety" title="Budgets & safety">
 						<p>
 							Every key can carry a <strong>lifetime spend limit</strong> and a{" "}
-							<strong>max concurrent servers</strong> cap. Creating a server
-							needs at least one hour of its price in your balance. When the
-							balance hits zero, running servers are powered off; after 24 hours
-							without a top-up they are destroyed. Every create, power action
-							and delete is written to the activity log with the key that did
-							it.
+							<strong>max concurrent servers</strong> cap. Spend limits count
+							servers at provider list price, not just the fee. Creating a
+							server needs credit for at least one hour of its fee; an empty
+							balance blocks new servers but never touches running ones. Every
+							create, power action and delete is written to the activity log
+							with the key that did it.
 						</p>
 					</Section>
 
@@ -316,15 +376,15 @@ function DocsPage() {
 								},
 								{
 									label: "Create",
-									code: `curl -X POST ${API_URL}/v1/servers \\\n  -H "Authorization: Bearer $SWITCHYARD_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{"requirements":{"minVcpu":2,"minMemoryGb":4,"continents":["EU"]}}'`,
+									code: `curl -X POST ${API_URL}/v1/servers \\\n  -H "Authorization: Bearer $HESSIANLABS_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{"requirements":{"minVcpu":2,"minMemoryGb":4,"continents":["EU"]}}'`,
 								},
 								{
 									label: "Get",
-									code: `curl "${API_URL}/v1/servers/srv_123?waitForRunningSeconds=60" \\\n  -H "Authorization: Bearer $SWITCHYARD_API_KEY"`,
+									code: `curl "${API_URL}/v1/servers/srv_123?waitForRunningSeconds=60" \\\n  -H "Authorization: Bearer $HESSIANLABS_API_KEY"`,
 								},
 								{
 									label: "Delete",
-									code: `curl -X DELETE ${API_URL}/v1/servers/srv_123 \\\n  -H "Authorization: Bearer $SWITCHYARD_API_KEY"`,
+									code: `curl -X DELETE ${API_URL}/v1/servers/srv_123 \\\n  -H "Authorization: Bearer $HESSIANLABS_API_KEY"`,
 								},
 							]}
 						/>

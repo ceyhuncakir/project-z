@@ -143,6 +143,10 @@ export function createLinodeAdapter(
 	return {
 		info: liveInfo(info),
 
+		async verify() {
+			await api({ path: "/profile" });
+		},
+
 		async listRegions() {
 			return (await loadRegions())
 				.map((r) => {
@@ -209,7 +213,7 @@ export function createLinodeAdapter(
 						...(metadata
 							? { metadata: { user_data: toBase64(input.userData) } }
 							: {}),
-						tags: ["switchyard"],
+						tags: ["hessianlabs"],
 						booted: true,
 					},
 				});

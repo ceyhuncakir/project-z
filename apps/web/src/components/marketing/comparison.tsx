@@ -5,52 +5,52 @@ import { Reveal, SectionIntro } from "./section";
 const ROWS: [
 	topic: string,
 	direct: string,
-	switchyard: string,
-	winner: "direct" | "switchyard" | "tie",
+	hessianlabs: string,
+	winner: "direct" | "hessianlabs" | "tie",
 ][] = [
 	[
 		"Accounts to open",
 		"One per provider, each with KYC and a card",
-		"One account",
-		"switchyard",
+		"The same ones, each connected once with a token",
+		"tie",
 	],
 	[
 		"Billing",
-		"An invoice per provider, in mixed currencies",
-		"One prepaid USD balance, per minute",
-		"switchyard",
+		"Each provider bills you directly",
+		"Each provider still bills you; HessianLabs's fee comes from prepaid credits",
+		"direct",
 	],
 	[
 		"APIs to integrate",
 		"A different API, SDK and auth scheme each",
 		"One MCP endpoint and one REST API",
-		"switchyard",
+		"hessianlabs",
 	],
 	[
 		"Finding the cheapest fit",
 		"Compare pricing pages by hand",
-		"Live catalog, cheapest match first",
-		"switchyard",
+		"Live catalog across your accounts, cheapest match first",
+		"hessianlabs",
 	],
 	[
 		"Out of capacity",
 		"Your code handles the error",
 		"Automatic fallback to the next match",
-		"switchyard",
+		"hessianlabs",
 	],
 	[
 		"Agent guardrails",
-		"Agents hold full account credentials",
+		"Agents hold your full cloud tokens",
 		"Per-key spend caps and server limits",
-		"switchyard",
+		"hessianlabs",
 	],
 	[
-		"CPUs and GPUs",
-		"Separate vendors and workflows",
-		"Same call — add min_vram_gb",
-		"switchyard",
+		"GPUs",
+		"Available today, with separate vendors and workflows",
+		"Coming soon — the same call, plus min_vram_gb",
+		"direct",
 	],
-	["Prices", "List price", "List price + 5% on top-ups", "direct"],
+	["Prices", "List price", "List price, plus a small fee per server", "direct"],
 	[
 		"Provider-specific features",
 		"Everything: volumes, networks, load balancers",
@@ -66,7 +66,7 @@ export function Comparison() {
 				index="07"
 				label="Compared"
 				title="Going direct vs. going through the yard."
-				lede="Direct accounts still make sense for deep, single-provider setups. For agents that need a machine now, anywhere, the trade-off looks like this."
+				lede="Direct accounts still make sense for deep, single-provider setups. For agents that need a machine now, on whichever of your clouds fits, the trade-off looks like this."
 			/>
 			<Reveal className="mt-10 overflow-x-auto border">
 				<table className="w-full min-w-[640px] text-sm">
@@ -77,7 +77,7 @@ export function Comparison() {
 								Going direct
 							</th>
 							<th className="label-mono w-[37%] px-4 py-3 font-normal">
-								<span className="text-signal">●</span> Switchyard
+								<span className="text-signal">●</span> HessianLabs
 							</th>
 						</tr>
 					</thead>
@@ -87,7 +87,7 @@ export function Comparison() {
 								<td className="px-4 py-3.5 font-medium">{topic}</td>
 								<td className="px-4 py-3.5 text-muted-foreground">
 									<span className="inline-flex items-start gap-2">
-										{winner === "direct" ? (
+										{winner !== "hessianlabs" ? (
 											<CheckIcon className="mt-0.5 size-3.5 shrink-0 text-go" />
 										) : (
 											<MinusIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/60" />
@@ -97,7 +97,7 @@ export function Comparison() {
 								</td>
 								<td className="px-4 py-3.5">
 									<span className="inline-flex items-start gap-2">
-										{winner === "switchyard" ? (
+										{winner !== "direct" ? (
 											<CheckIcon className="mt-0.5 size-3.5 shrink-0 text-signal" />
 										) : (
 											<MinusIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/60" />

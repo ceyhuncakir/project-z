@@ -9,6 +9,7 @@ import { useState } from "react";
 import { flag, formatUsd } from "@/lib/format";
 import { orpc } from "@/utils/orpc";
 
+import { ProviderLogo } from "../provider-logo";
 import { hourlyPrice, Reveal, SectionIntro } from "./section";
 
 export const BOARDS = [
@@ -51,7 +52,7 @@ export function PriceBoard() {
 				index="06"
 				label="Live prices"
 				title={`Same machine, ${rows.length || "many"} prices.`}
-				lede="The cheapest matching plan at each provider, straight from the catalog your agent searches."
+				lede="The cheapest matching plan at each provider, straight from the catalog. Providers marked soon can't be connected yet."
 			>
 				<Link to="/catalog" className={buttonVariants({ variant: "outline" })}>
 					All plans <ArrowRightIcon />
@@ -124,8 +125,17 @@ export function PriceBoard() {
 											i === 0 && "bg-signal/[0.05]",
 										)}
 									>
-										<span className="font-medium">
+										<span className="flex items-center font-medium">
+											<ProviderLogo
+												provider={p.provider}
+												className="mr-2.5 size-6"
+											/>
 											{p.providerName}
+											{p.preview && (
+												<span className="ml-2 font-mono text-[10px] text-muted-foreground uppercase">
+													soon
+												</span>
+											)}
 											{i === 0 && (
 												<span className="ml-2 font-mono text-[10px] text-signal uppercase">
 													cheapest

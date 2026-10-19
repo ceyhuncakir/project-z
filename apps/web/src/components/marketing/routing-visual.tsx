@@ -16,10 +16,10 @@ const ROWS = [
 		state: "fallback",
 	},
 	{
-		provider: "contabo",
-		plan: "cloud-vps-10",
-		where: "Nuremberg, DE",
-		price: "$0.0075",
+		provider: "ovhcloud",
+		plan: "d2-4",
+		where: "Gravelines, FR",
+		price: "$0.0170",
 		state: "fallback",
 	},
 ] as const;

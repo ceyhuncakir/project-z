@@ -24,6 +24,7 @@ export const Route = createFileRoute("/")({
 	loader: ({ context }) =>
 		Promise.all([
 			context.queryClient.prefetchQuery(providersQuery),
+			context.queryClient.prefetchQuery(orpc.meta.queryOptions()),
 			context.queryClient.prefetchQuery(llmModelsQuery),
 			context.queryClient.prefetchQuery(
 				orpc.catalog.sizeLlm.queryOptions({
@@ -49,7 +50,7 @@ function Landing() {
 							index="01"
 							label="See it work"
 							title="Watch an agent run its own infrastructure."
-							lede="A scripted demo built from the real MCP tools: provisioning with per-minute billing, routing around a sold-out plan, and sizing GPUs for an open model. Hover to pause."
+							lede="A scripted demo built from the real MCP tools: provisioning in your own cloud account, routing around a sold-out plan, and sizing GPUs for an open model (GPU clouds are coming soon). Hover to pause."
 						/>
 						<ProductShowcase className="mt-10" />
 					</section>

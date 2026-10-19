@@ -1,4 +1,8 @@
 import { createCatalog } from "./catalog";
+import {
+	type ProviderCredentials,
+	providerCredentialsSchemas,
+} from "./credentials";
 import { createDigitalOceanAdapter } from "./providers/digitalocean";
 import { createHetznerAdapter } from "./providers/hetzner";
 import { createLinodeAdapter } from "./providers/linode";
@@ -7,15 +11,20 @@ import { createSandboxAdapter, type SandboxOptions } from "./providers/sandbox";
 import { createScalewayAdapter } from "./providers/scaleway";
 import { createVultrAdapter } from "./providers/vultr";
 import {
+	type AdapterMode,
+	LIVE_PROVIDER_IDS,
 	type LiveProviderId,
 	PREVIEW_PROVIDER_IDS,
+	PROVIDER_IDS,
 	type ProviderAdapter,
+	ProviderError,
 	type ProviderId,
 	type ProviderInfo,
 } from "./types";
 
 export * from "./catalog";
 export * from "./cloud-init";
+export * from "./credentials";
 export * from "./images";
 export * from "./llm";
 export * from "./money";
@@ -80,77 +89,113 @@ export const PROVIDERS: Record<ProviderId, ProviderMeta> = {
 	),
 };
 
-/** Platform credentials. A provider without credentials runs in sandbox mode. */
+/**
+ * Platform credentials, used only to read providers' price lists. Servers are
+ * created in each user's own account through `connect`. A provider without a
+ * platform token serves its reference catalog.
+ */
 export interface CloudConfig {
-	/** Force every provider into sandbox mode, even when credentials exist. */
+	/** Simulate every provider: reference catalogs, and `connect` accepts any credentials. */
 	sandboxOnly?: boolean;
 	/** EUR→USD rate used to normalize prices from EUR-billed providers. */
 	eurUsdRate?: number;
 	sandbox?: SandboxOptions;
-	hetzner?: { token: string };
-	digitalocean?: { token: string };
-	vultr?: { apiKey: string };
-	linode?: { token: string };
-	scaleway?: { secretKey: string; projectId: string };
-	ovhcloud?: {
-		endpoint: string;
-		applicationKey: string;
-		applicationSecret: string;
-		consumerKey: string;
-		projectId: string;
-	};
+	hetzner?: ProviderCredentials["hetzner"];
+	digitalocean?: ProviderCredentials["digitalocean"];
+	vultr?: ProviderCredentials["vultr"];
+	linode?: ProviderCredentials["linode"];
+	scaleway?: ProviderCredentials["scaleway"];
+	ovhcloud?: ProviderCredentials["ovhcloud"];
+}
+
+export type ProviderConnection = {
+	[P in LiveProviderId]: { provider: P; credentials: ProviderCredentials[P] };
+}[LiveProviderId];
+
+export const isLiveProvider = (id: string): id is LiveProviderId =>
+	(LIVE_PROVIDER_IDS as readonly string[]).includes(id);
+
+export function createLiveAdapter(
+	conn: ProviderConnection,
+	eurUsdRate: number,
+): ProviderAdapter {
+	switch (conn.provider) {
+		case "hetzner":
+			return createHetznerAdapter(PROVIDERS.hetzner, {
+				...conn.credentials,
+				eurUsdRate,
+			});
+		case "digitalocean":
+			return createDigitalOceanAdapter(
+				PROVIDERS.digitalocean,
+				conn.credentials,
+			);
+		case "vultr":
+			return createVultrAdapter(PROVIDERS.vultr, conn.credentials);
+		case "linode":
+			return createLinodeAdapter(PROVIDERS.linode, conn.credentials);
+		case "scaleway":
+			return createScalewayAdapter(PROVIDERS.scaleway, {
+				...conn.credentials,
+				eurUsdRate,
+			});
+		case "ovhcloud":
+			return createOvhAdapter(PROVIDERS.ovhcloud, {
+				...conn.credentials,
+				eurUsdRate,
+			});
+	}
 }
 
 export function createCloud(config: CloudConfig = {}) {
-	const fx = config.eurUsdRate ?? 1.1;
-	const live = !config.sandboxOnly;
+	const eurUsdRate = config.eurUsdRate ?? 1.1;
+	const sandboxOnly = Boolean(config.sandboxOnly);
 
-	const live_: Record<LiveProviderId, ProviderAdapter> = {
-		hetzner:
-			live && config.hetzner
-				? createHetznerAdapter(PROVIDERS.hetzner, {
-						...config.hetzner,
-						eurUsdRate: fx,
-					})
-				: createSandboxAdapter(PROVIDERS.hetzner, config.sandbox),
-		digitalocean:
-			live && config.digitalocean
-				? createDigitalOceanAdapter(PROVIDERS.digitalocean, config.digitalocean)
-				: createSandboxAdapter(PROVIDERS.digitalocean, config.sandbox),
-		vultr:
-			live && config.vultr
-				? createVultrAdapter(PROVIDERS.vultr, config.vultr)
-				: createSandboxAdapter(PROVIDERS.vultr, config.sandbox),
-		linode:
-			live && config.linode
-				? createLinodeAdapter(PROVIDERS.linode, config.linode)
-				: createSandboxAdapter(PROVIDERS.linode, config.sandbox),
-		ovhcloud:
-			live && config.ovhcloud
-				? createOvhAdapter(PROVIDERS.ovhcloud, {
-						...config.ovhcloud,
-						eurUsdRate: fx,
-					})
-				: createSandboxAdapter(PROVIDERS.ovhcloud, config.sandbox),
-		scaleway:
-			live && config.scaleway
-				? createScalewayAdapter(PROVIDERS.scaleway, {
-						...config.scaleway,
-						eurUsdRate: fx,
-					})
-				: createSandboxAdapter(PROVIDERS.scaleway, config.sandbox),
-	};
+	// One simulated account per provider, shared so server state survives between requests.
+	const sandboxes = Object.fromEntries(
+		PROVIDER_IDS.map((id) => [
+			id,
+			createSandboxAdapter(PROVIDERS[id], config.sandbox),
+		]),
+	) as Record<ProviderId, ProviderAdapter>;
 
-	// Preview providers are always simulated until their live adapters land.
-	const adapters = { ...live_ } as Record<ProviderId, ProviderAdapter>;
-	for (const id of PREVIEW_PROVIDER_IDS) {
-		adapters[id] = createSandboxAdapter(PROVIDERS[id], config.sandbox);
-	}
+	const priceLists = LIVE_PROVIDER_IDS.flatMap((provider) => {
+		const credentials = config[provider];
+		if (sandboxOnly || !credentials) return [];
+		return [
+			createLiveAdapter(
+				{ provider, credentials } as ProviderConnection,
+				eurUsdRate,
+			),
+		];
+	});
+	const catalogAdapters = PROVIDER_IDS.map(
+		(id) => priceLists.find((a) => a.info.id === id) ?? sandboxes[id],
+	);
+
+	/** Every provider with a live adapter, or all of them when simulating. */
+	const connectable = (id: ProviderId) => sandboxOnly || isLiveProvider(id);
 
 	return {
-		adapters,
-		adapter: (id: ProviderId) => adapters[id],
-		catalog: createCatalog(Object.values(adapters)),
+		mode: (sandboxOnly ? "sandbox" : "live") as AdapterMode,
+		catalog: createCatalog(catalogAdapters),
+		connectable,
+		/** An adapter acting in a user's own account. */
+		connect(provider: ProviderId, credentials: unknown): ProviderAdapter {
+			if (sandboxOnly) return sandboxes[provider];
+			if (!isLiveProvider(provider)) {
+				throw new ProviderError(provider, "not available yet", {
+					status: 400,
+				});
+			}
+			return createLiveAdapter(
+				{
+					provider,
+					credentials: providerCredentialsSchemas[provider].parse(credentials),
+				} as ProviderConnection,
+				eurUsdRate,
+			);
+		},
 	};
 }
 

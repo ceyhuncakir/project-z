@@ -2,12 +2,12 @@ import { CodeBlock, type CodeTab } from "./code-block";
 
 export function mcpSnippets(
 	mcpUrl: string,
-	key = "sy_live_YOUR_KEY",
+	key = "hl_live_YOUR_KEY",
 ): CodeTab[] {
 	return [
 		{
 			label: "Claude Code",
-			code: `claude mcp add --transport http switchyard ${mcpUrl} \\\n  --header "Authorization: Bearer ${key}"`,
+			code: `claude mcp add --transport http hessianlabs ${mcpUrl} \\\n  --header "Authorization: Bearer ${key}"`,
 		},
 		{
 			label: "Cursor",
@@ -15,7 +15,7 @@ export function mcpSnippets(
 			code: JSON.stringify(
 				{
 					mcpServers: {
-						switchyard: {
+						hessianlabs: {
 							url: mcpUrl,
 							headers: { Authorization: `Bearer ${key}` },
 						},
@@ -28,7 +28,7 @@ export function mcpSnippets(
 		{
 			label: "Codex",
 			hint: "~/.codex/config.toml",
-			code: `[mcp_servers.switchyard]\nurl = "${mcpUrl}"\nbearer_token_env_var = "SWITCHYARD_API_KEY"\n\n# then: export SWITCHYARD_API_KEY=${key}`,
+			code: `[mcp_servers.hessianlabs]\nurl = "${mcpUrl}"\nbearer_token_env_var = "HESSIANLABS_API_KEY"\n\n# then: export HESSIANLABS_API_KEY=${key}`,
 		},
 		{
 			label: "VS Code",
@@ -36,7 +36,7 @@ export function mcpSnippets(
 			code: JSON.stringify(
 				{
 					servers: {
-						switchyard: {
+						hessianlabs: {
 							type: "http",
 							url: mcpUrl,
 							headers: { Authorization: `Bearer ${key}` },

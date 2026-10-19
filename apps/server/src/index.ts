@@ -66,7 +66,7 @@ app.all("/mcp", async (c) => {
 				id: null,
 			},
 			401,
-			{ "WWW-Authenticate": 'Bearer realm="switchyard"' },
+			{ "WWW-Authenticate": 'Bearer realm="hessianlabs"' },
 		);
 	}
 	const transport = new WebStandardStreamableHTTPServerTransport({
@@ -97,10 +97,10 @@ const restHandler = new OpenAPIHandler(appRouter, {
 		new OpenAPIReferencePlugin({
 			docsPath: "/docs",
 			specPath: "/openapi.json",
-			docsTitle: "Switchyard API",
+			docsTitle: "HessianLabs API",
 			schemaConverters: [new ZodToJsonSchemaConverter()],
 			specGenerateOptions: {
-				info: { title: "Switchyard API", version: "1.0.0" },
+				info: { title: "HessianLabs API", version: "1.0.0" },
 				servers: [{ url: `${services.config.apiUrl}/v1` }],
 				components: {
 					securitySchemes: { apiKey: { type: "http", scheme: "bearer" } },
@@ -133,7 +133,7 @@ app.use("/v1/*", async (c, next) => {
 });
 
 app.get("/", (c) =>
-	c.json({ name: "switchyard", mcp: "/mcp", api: "/v1", docs: "/v1/docs" }),
+	c.json({ name: "hessianlabs", mcp: "/mcp", api: "/v1", docs: "/v1/docs" }),
 );
 
 // Billing and provisioning loops. Guarded so `bun --hot` reloads don't stack intervals.

@@ -24,10 +24,10 @@ const CANDIDATES = [
 		price: "$0.0062",
 	},
 	{
-		provider: "contabo",
-		plan: "cloud-vps-10",
-		where: "Nuremberg, DE",
-		price: "$0.0075",
+		provider: "ovhcloud",
+		plan: "d2-4",
+		where: "Gravelines, FR",
+		price: "$0.0170",
 	},
 ];
 
@@ -102,7 +102,7 @@ export function SceneRoute({ t }: { t: number }) {
 				<div className="flex items-center">
 					<Appear show={t >= 1_100} className="w-full">
 						<div className="border bg-background px-3 py-2.5">
-							<p className="font-medium text-[12.5px]">switchyard</p>
+							<p className="font-medium text-[12.5px]">hessianlabs</p>
 							<p className="font-mono text-[10px] text-muted-foreground">
 								{t < 2_300
 									? "ranking every match…"

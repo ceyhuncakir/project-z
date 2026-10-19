@@ -1,0 +1,24 @@
+# Services for docker-compose.yml, which interpolates this file from
+# apps/server/.env. Run compose against docker-compose.yml, not this file.
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: switchyard
+      POSTGRES_USER: switchyard
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?add POSTGRES_PASSWORD to apps/server/.env}
+    # Loopback only. 5433 so it doesn't clash with a dev Postgres on 5432.
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U switchyard -d switchyard"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

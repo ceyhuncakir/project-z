@@ -26,7 +26,7 @@ export interface GeneratedKeyPair {
 }
 
 export function generateEd25519KeyPair(
-	comment = "switchyard",
+	comment = "hessianlabs",
 ): GeneratedKeyPair {
 	const { publicKey, privateKey } = generateKeyPairSync("ed25519");
 	const pubJwk = publicKey.export({ format: "jwk" });

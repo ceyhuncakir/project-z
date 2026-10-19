@@ -1,4 +1,5 @@
 import type { AppConfig, Services } from "@switchyard/api/context";
+import { parseCredentialsKey } from "@switchyard/api/services/credentials";
 import { ensureWallet } from "@switchyard/api/services/wallet";
 import { createAuth } from "@switchyard/auth";
 import { createCloud } from "@switchyard/cloud";
@@ -6,6 +7,14 @@ import { createDb } from "@switchyard/db";
 import Stripe from "stripe";
 
 import { ENV } from "./env.server";
+
+if (ENV.CLOUD_SANDBOX_ONLY && ENV.NODE_ENV === "production") {
+	// Simulated servers would still be charged a real fee.
+	throw new Error("CLOUD_SANDBOX_ONLY can't be used with NODE_ENV=production");
+}
+if (!(ENV.PLATFORM_FEE_PERCENT >= 0 && ENV.PLATFORM_FEE_PERCENT <= 100)) {
+	throw new Error("PLATFORM_FEE_PERCENT must be between 0 and 100");
+}
 
 export const db = createDb(ENV);
 
@@ -48,12 +57,14 @@ const config: AppConfig = {
 	apiUrl: ENV.BETTER_AUTH_URL.replace(/\/$/, ""),
 	allowTestCredits: ENV.ALLOW_TEST_CREDITS && ENV.NODE_ENV !== "production",
 	githubAuth: Boolean(ENV.GITHUB_CLIENT_ID && ENV.GITHUB_CLIENT_SECRET),
+	feeBps: Math.round(ENV.PLATFORM_FEE_PERCENT * 100),
+	credentialsKey: parseCredentialsKey(ENV.CREDENTIALS_KEY),
 	stripe: ENV.STRIPE_SECRET_KEY
 		? {
 				client: new Stripe(ENV.STRIPE_SECRET_KEY, {
 					// fetch works the same on Bun, Node and edge runtimes.
 					httpClient: Stripe.createFetchHttpClient(),
-					appInfo: { name: "switchyard" },
+					appInfo: { name: "hessianlabs" },
 				}),
 				webhookSecret: ENV.STRIPE_WEBHOOK_SECRET ?? null,
 			}

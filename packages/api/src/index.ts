@@ -26,7 +26,7 @@ export const userProcedure = publicProcedure.use(async ({ context, next }) => {
 	}
 	throw new ORPCError("UNAUTHORIZED", {
 		message:
-			"Sign in, or send an API key as `Authorization: Bearer sy_live_…`.",
+			"Sign in, or send an API key as `Authorization: Bearer hl_live_…`.",
 	});
 });
 

@@ -14,6 +14,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import {
 	ActivityIcon,
 	BookOpenIcon,
+	CloudIcon,
 	CreditCardIcon,
 	KeyRoundIcon,
 	LayoutGridIcon,
@@ -36,16 +37,15 @@ import { ThemeToggle } from "../theme-toggle";
 const NAV = [
 	{ to: "/dashboard", label: "Overview", icon: LayoutGridIcon },
 	{ to: "/servers", label: "Servers", icon: ServerIcon },
+	{ to: "/plans", label: "Catalog", icon: TableIcon },
+	{ to: "/providers", label: "Providers", icon: CloudIcon },
 	{ to: "/credits", label: "Credits", icon: CreditCardIcon },
 	{ to: "/keys", label: "API keys", icon: KeyRoundIcon },
 	{ to: "/ssh-keys", label: "SSH keys", icon: TerminalIcon },
 	{ to: "/activity", label: "Activity", icon: ActivityIcon },
 ] as const;
 
-const SECONDARY = [
-	{ to: "/catalog", label: "Catalog", icon: TableIcon },
-	{ to: "/docs", label: "Docs", icon: BookOpenIcon },
-] as const;
+const SECONDARY = [{ to: "/docs", label: "Docs", icon: BookOpenIcon }] as const;
 
 export function useOverview() {
 	return useQuery(

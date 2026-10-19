@@ -2,16 +2,20 @@ import { PlusIcon } from "lucide-react";
 
 const FAQ = [
 	{
-		q: "Do I need my own Hetzner, DigitalOcean or RunPod accounts?",
-		a: "No. Servers run on Switchyard's provider accounts and are paid from your credit balance — like OpenRouter does for models. One signup, one balance.",
+		q: "Do I need my own Hetzner, DigitalOcean or Vultr accounts?",
+		a: "Yes. You connect your own accounts with an API token and servers run there, so your provider bills you directly at list price, under its own terms. HessianLabs adds routing, one API for all of them and agent guardrails, and charges a small fee per server from prepaid credits.",
 	},
 	{
-		q: "Which providers are live today?",
-		a: "Hetzner, DigitalOcean, Vultr, Akamai Linode, OVHcloud and Scaleway have live adapters. UpCloud, Contabo, Civo, Exoscale and the GPU clouds (RunPod, Lambda, Vast.ai, CoreWeave, Paperspace, Nebius, Hyperstack) are in preview: they use the same API but are simulated with indicative prices until their adapters ship.",
+		q: "Which providers can I connect?",
+		a: "Hetzner, DigitalOcean, Vultr, Akamai Linode, OVHcloud and Scaleway. UpCloud, Contabo, Civo, Exoscale and the GPU clouds (RunPod, Lambda, Vast.ai, CoreWeave, Paperspace, Nebius, Hyperstack) are coming soon: they're in the catalog with indicative prices, but can't be connected until their adapters ship.",
+	},
+	{
+		q: "How are my cloud credentials stored?",
+		a: "Encrypted with AES-256-GCM before they reach the database, and never shown again. Use a token limited to servers — for Hetzner, a project just for HessianLabs — and revoke it at the provider whenever you like.",
 	},
 	{
 		q: "Can I host an LLM?",
-		a: "Yes. Ask size_llm how much GPU memory a model needs (or pass min_vram_gb yourself) and create_server routes to the cheapest GPU plan that fits, booted with Ubuntu 22.04 and CUDA. Bring your serving stack — vLLM, TGI, llama.cpp.",
+		a: "Soon. size_llm already estimates how much GPU memory a model needs. Once GPU clouds can be connected, create_server with min_vram_gb routes to the cheapest GPU plan that fits, booted with Ubuntu 22.04 and CUDA. Bring your serving stack — vLLM, TGI, llama.cpp.",
 	},
 	{
 		q: "Which agents can use it?",
@@ -19,15 +23,19 @@ const FAQ = [
 	},
 	{
 		q: "How do payments work?",
-		a: "You top up through Stripe Checkout. The 5% fee is shown as its own line item. Tick “save card” to enable auto top-up, which charges the saved card when your balance drops below a threshold you choose. Receipts live in the Stripe billing portal.",
+		a: "Your provider bills servers to your own account. HessianLabs's fee — a percentage of each server's list price, charged per minute — comes from credits you top up through Stripe Checkout. Top-ups carry a 5% fee (minimum $0.50), shown as its own line item. Tick “save card” to enable auto top-up, which charges the saved card when your balance drops below a threshold you choose. Receipts live in the Stripe billing portal.",
 	},
 	{
 		q: "How do I stop an agent from overspending?",
-		a: "Give each agent its own API key with a spend limit and a maximum number of concurrent servers. Credits are prepaid, so the worst case is bounded by your balance — and every action lands in the activity log.",
+		a: "Give each agent its own API key with a spend limit (measured at provider list prices) and a maximum number of concurrent servers. Every action lands in the activity log, and you can revoke a key — or the cloud token itself — at any time.",
 	},
 	{
 		q: "What happens when my credits run out?",
-		a: "Running servers are powered off and marked suspended. Top up within 24 hours and start them again; otherwise they're destroyed so nothing keeps billing. Auto top-up avoids this entirely.",
+		a: "New servers can't be created until you top up. Servers that are already running keep running: HessianLabs never powers off or deletes them over its fee. Auto top-up avoids the interruption entirely.",
+	},
+	{
+		q: "What if I delete a server in my provider's console?",
+		a: "HessianLabs notices within about five minutes and stops its fee. If you disconnect an account, or its token stops working, its servers are detached: they keep running in your account, unmanaged and with no fee.",
 	},
 	{
 		q: "What if I get a refund?",

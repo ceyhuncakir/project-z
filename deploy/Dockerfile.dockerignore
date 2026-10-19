@@ -1,0 +1,16 @@
+# The build context is the whole repo: keep secrets and local artifacts out.
+.git
+docs
+**/node_modules
+**/.env
+**/.env.*
+!**/.env.schema
+!**/.env.example
+**/dist
+**/.turbo
+**/.tanstack
+**/.output
+**/*.tsbuildinfo
+# Generated during the image build.
+**/src/env.ts
+**/routeTree.gen.ts

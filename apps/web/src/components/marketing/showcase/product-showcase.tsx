@@ -31,8 +31,9 @@ const SCENES = [
 	},
 	{
 		id: "llm",
-		label: "Serve an LLM",
-		caption: "Size a model, rank GPU plans, get a CUDA box",
+		label: "Serve an LLM · soon",
+		caption:
+			"Size a model, rank GPU plans, get a CUDA box (GPU clouds coming soon)",
 		duration: LLM_DURATION,
 		staticT: LLM_STATIC_T,
 		Scene: SceneLlm,
@@ -90,7 +91,7 @@ export function ProductShowcase({ className }: { className?: string }) {
 					<span className="size-2.5 rounded-full bg-border" />
 					<span className="size-2.5 rounded-full bg-border" />
 					<span className="ml-2 hidden font-mono text-[11px] text-muted-foreground sm:inline">
-						switchyard — {scene.caption.toLowerCase()}
+						hessianlabs — {scene.caption.toLowerCase()}
 					</span>
 				</div>
 				<span className="inline-flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">

@@ -13,6 +13,8 @@ export const PROVISION_STATIC_T = 6_600;
 const PROMPT =
 	"Spin up a 4 GB box in Europe, run the load test, then clean up.";
 const PRICE_MICROS = 5_466;
+/** HessianLabs's default fee; the server itself is billed by Hetzner. */
+const FEE_RATE = 0.05;
 
 export function SceneProvision({ t }: { t: number }) {
 	const created = t >= 2_200;
@@ -20,6 +22,7 @@ export function SceneProvision({ t }: { t: number }) {
 	const deleted = t >= 8_000;
 	// Accelerated meter: the one-hour minimum accrues over the scene.
 	const cost = PRICE_MICROS * phase(t, 4_400, 3_400);
+	const fee = cost * FEE_RATE;
 	const prompt = typed(PROMPT, t, 200, 55);
 
 	return (
@@ -38,7 +41,7 @@ export function SceneProvision({ t }: { t: number }) {
 					<UserLine text={prompt} cursor={prompt.length < PROMPT.length} />
 					<Appear show={t >= 1_600}>
 						<ToolLine
-							name="switchyard.create_server"
+							name="hessianlabs.create_server"
 							args='{ min_memory_gb: 4, continents: ["EU"] }'
 							pending={!created}
 						/>
@@ -50,7 +53,7 @@ export function SceneProvision({ t }: { t: number }) {
 					</Appear>
 					<Appear show={t >= 2_800}>
 						<ToolLine
-							name="switchyard.get_server"
+							name="hessianlabs.get_server"
 							args="{ wait_for_running_seconds: 90 }"
 							pending={!running}
 						/>
@@ -70,17 +73,19 @@ export function SceneProvision({ t }: { t: number }) {
 					</Appear>
 					<Appear show={t >= 7_400}>
 						<ToolLine
-							name="switchyard.delete_server"
+							name="hessianlabs.delete_server"
 							args='{ id: "srv_8kq2m1" }'
 							pending={!deleted}
 						/>
 					</Appear>
 					<Appear show={deleted}>
-						<OutLine tone="go">deleted · final cost $0.0055</OutLine>
+						<OutLine tone="go">
+							deleted · $0.0055 at hetzner · fee $0.0003
+						</OutLine>
 					</Appear>
 					<Appear show={t >= 8_900}>
 						<p className="pt-2 text-foreground">
-							Load test passed. Server destroyed — spent $0.0055.
+							Load test passed. Server deleted — $0.0055 on your Hetzner bill.
 						</p>
 					</Appear>
 				</div>
@@ -90,9 +95,9 @@ export function SceneProvision({ t }: { t: number }) {
 				<PanelTitle
 					right={
 						<span className="font-mono text-[10.5px] text-muted-foreground">
-							balance{" "}
+							credits{" "}
 							<span className="tabular text-foreground">
-								${(50 - cost / 1e6).toFixed(4)}
+								${(50 - fee / 1e6).toFixed(5)}
 							</span>
 						</span>
 					}
@@ -139,20 +144,20 @@ export function SceneProvision({ t }: { t: number }) {
 				</div>
 				<div className="mt-auto grid grid-cols-2 gap-px border-t bg-border font-mono text-[11px]">
 					<div className="bg-background px-4 py-3">
-						<p className="text-muted-foreground">this run</p>
+						<p className="text-muted-foreground">hetzner bill</p>
 						<p className="tabular mt-0.5 text-[15px] text-foreground">
 							${(cost / 1e6).toFixed(4)}
 						</p>
 					</div>
 					<div className="bg-background px-4 py-3">
-						<p className="text-muted-foreground">billing</p>
+						<p className="text-muted-foreground">fee from credits</p>
 						<p
 							className={cn(
 								"tabular mt-0.5 text-[15px]",
 								running && !deleted ? "text-signal" : "text-foreground",
 							)}
 						>
-							{running && !deleted ? "per minute" : deleted ? "stopped" : "—"}
+							${(fee / 1e6).toFixed(5)}
 						</p>
 					</div>
 				</div>

@@ -262,6 +262,10 @@ export function createOvhAdapter(
 	return {
 		info: liveInfo(info),
 
+		async verify() {
+			await request("GET", project);
+		},
+
 		async listRegions() {
 			const names = await request<string[]>("GET", `${project}/region`);
 			return names
@@ -362,7 +366,7 @@ export function createOvhAdapter(
 						},
 					);
 				}
-				// No sshKeyId: project SSH keys are shared by every tenant; cloud-init carries the keys.
+				// No sshKeyId: cloud-init carries the keys, so the project's key store is left alone.
 				const instance = await request<OInstance>(
 					"POST",
 					`${project}/instance`,

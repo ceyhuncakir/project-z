@@ -16,7 +16,7 @@ import { formatRunway, formatUsd } from "@/lib/format";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_app/dashboard")({
-	head: () => ({ meta: [{ title: "Overview — Switchyard" }] }),
+	head: () => ({ meta: [{ title: "Overview — HessianLabs" }] }),
 	component: Overview,
 });
 
@@ -33,6 +33,11 @@ function Overview() {
 
 	const o = overview.data;
 	const steps = [
+		{
+			done: (o?.connectedAccounts ?? 0) > 0,
+			label: "Connect a cloud account",
+			to: "/providers",
+		},
 		{ done: (o?.balanceMicros ?? 0) > 0, label: "Add credits", to: "/credits" },
 		{
 			done: (keys.data?.length ?? 0) > 0,
@@ -59,7 +64,7 @@ function Overview() {
 
 			{onboarding && (
 				<Panel title="Get set up" className="mb-6">
-					<ol className="grid gap-px bg-border sm:grid-cols-3">
+					<ol className="grid gap-px bg-border sm:grid-cols-2 xl:grid-cols-4">
 						{steps.map((s, i) => (
 							<li key={s.label} className="bg-card">
 								<Link
@@ -103,13 +108,13 @@ function Overview() {
 					}
 				/>
 				<Stat
-					label="Burn rate"
+					label="HessianLabs fee"
 					value={
 						o ? `${formatUsd(o.burnMicrosPerHour, { precise: true })}/h` : "—"
 					}
 					hint={
 						o
-							? `${formatUsd(o.burnMicrosPerHour * 730)} / month at this rate`
+							? `Servers: ${formatUsd(o.serverSpendMicrosPerHour, { precise: true })}/h, billed by your providers`
 							: undefined
 					}
 				/>
@@ -118,14 +123,16 @@ function Overview() {
 					value={o ? formatRunway(o.runwayHours) : "—"}
 					hint={
 						o?.runwayHours === null
-							? "Nothing is billing"
-							: "Until balance reaches zero"
+							? "No fees accruing"
+							: "Until credits run out; then no new servers"
 					}
 				/>
 				<Stat
 					label="Active servers"
 					value={o?.activeServers ?? "—"}
-					hint="Across all providers"
+					hint={
+						o ? `On ${o.connectedAccounts} connected account(s)` : undefined
+					}
 				/>
 			</div>
 

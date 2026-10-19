@@ -2,7 +2,12 @@ import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { createHash } from "node:crypto";
 
 import { PROVIDERS } from "../index";
-import { type CreateServerInput, type Plan, ProviderError } from "../types";
+import {
+	type CreateServerInput,
+	type Plan,
+	type ProviderAdapter,
+	ProviderError,
+} from "../types";
 import { createDigitalOceanAdapter } from "./digitalocean";
 import { createHetznerAdapter } from "./hetzner";
 import { createLinodeAdapter } from "./linode";
@@ -335,7 +340,7 @@ describe("hetzner", () => {
 			location: "fsn1",
 			image: "ubuntu-24.04",
 			user_data: USER_DATA,
-			labels: { "switchyard-id": "srv_01HXYZ" },
+			labels: { "hessianlabs-id": "srv_01HXYZ" },
 			start_after_create: true,
 			public_net: { enable_ipv4: true, enable_ipv6: true },
 		});
@@ -568,7 +573,7 @@ describe("digitalocean", () => {
 			image: "ubuntu-24-04-x64",
 			user_data: USER_DATA,
 			ipv6: true,
-			tags: ["switchyard", "switchyard-srv_01_x"],
+			tags: ["hessianlabs", "hessianlabs-srv_01_x"],
 		});
 		for (const tag of body.tags as string[])
 			expect(tag).toMatch(/^[a-zA-Z0-9_\-:]+$/);
@@ -821,7 +826,7 @@ describe("vultr", () => {
 			label: "Web Server #1",
 			hostname: "web-server-1",
 			enable_ipv6: true,
-			tags: ["switchyard", "srv_01HXYZ"],
+			tags: ["hessianlabs", "srv_01HXYZ"],
 		});
 	});
 
@@ -1009,7 +1014,7 @@ describe("linode", () => {
 			authorized_keys: [
 				"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAItest test@example",
 			],
-			tags: ["switchyard"],
+			tags: ["hessianlabs"],
 			booted: true,
 		});
 		expect((withMeta.root_pass as string).length).toBeGreaterThanOrEqual(32);
@@ -1258,7 +1263,7 @@ describe("scaleway", () => {
 			commercial_type: "POP2-2C-8G",
 			image: "img-sbs",
 			project: "proj-1",
-			tags: ["switchyard", "srv_01HXYZ"],
+			tags: ["hessianlabs", "srv_01HXYZ"],
 			dynamic_ip_required: true,
 			volumes: { "0": { size: 20e9, volume_type: "sbs_volume" } },
 		});
@@ -1629,4 +1634,72 @@ describe("ovhcloud", () => {
 			createOvhAdapter(PROVIDERS.ovhcloud, { ...config, endpoint: "ovh-mars" }),
 		).toThrow(ProviderError);
 	});
+});
+
+describe("verify", () => {
+	const OVH = {
+		endpoint: "ovh-eu",
+		applicationKey: "ak",
+		applicationSecret: "as",
+		consumerKey: "ck",
+		projectId: "p1",
+		eurUsdRate: 1.1,
+	};
+	const cases: [string, (f: typeof fetch) => ProviderAdapter, string][] = [
+		[
+			"hetzner",
+			(f) =>
+				createHetznerAdapter(
+					PROVIDERS.hetzner,
+					{ token: "t", eurUsdRate: 1.1 },
+					f,
+				),
+			"/v1/servers",
+		],
+		[
+			"digitalocean",
+			(f) =>
+				createDigitalOceanAdapter(PROVIDERS.digitalocean, { token: "do" }, f),
+			"/v2/account",
+		],
+		[
+			"vultr",
+			(f) => createVultrAdapter(PROVIDERS.vultr, { apiKey: "vk" }, f),
+			"/v2/account",
+		],
+		[
+			"linode",
+			(f) => createLinodeAdapter(PROVIDERS.linode, { token: "li" }, f),
+			"/v4/profile",
+		],
+		[
+			"scaleway",
+			(f) =>
+				createScalewayAdapter(
+					PROVIDERS.scaleway,
+					{ secretKey: "scw", projectId: "proj-1", eurUsdRate: 1.1 },
+					f,
+				),
+			"/instance/v1/zones/fr-par-1/servers",
+		],
+		[
+			"ovhcloud",
+			(f) => createOvhAdapter(PROVIDERS.ovhcloud, OVH, f),
+			"/1.0/cloud/project/p1",
+		],
+	];
+	const time = { path: "/1.0/auth/time", body: 1_700_000_000 };
+
+	for (const [name, make, path] of cases) {
+		test(`${name} checks credentials with GET ${path}`, async () => {
+			const ok = fakeFetch([time, { path, body: {} }]);
+			await make(ok.fetch).verify();
+			expect(ok.find("GET", path)).toBeDefined();
+
+			const denied = fakeFetch([time, { path, status: 401, body: {} }]);
+			const err = await rejection(make(denied.fetch).verify());
+			expect(err).toBeInstanceOf(ProviderError);
+			expect(err.status).toBe(401);
+		});
+	}
 });

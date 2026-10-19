@@ -125,6 +125,34 @@ export const sshKey = pgTable(
 	],
 );
 
+/**
+ * A user's own cloud account. Servers are created there, so the provider
+ * bills the user directly; HessianLabs only charges its fee.
+ */
+export const providerAccount = pgTable(
+	"provider_account",
+	{
+		id: text("id").primaryKey(),
+		userId: userId(),
+		provider: text("provider").notNull(),
+		/** AES-256-GCM sealed JSON credentials. Never leaves the API server. */
+		credentials: text("credentials").notNull(),
+		/** Last characters of the main secret, safe to display. */
+		hint: text("hint").notNull(),
+		/** Why the provider stopped accepting the credentials. Null while they work. */
+		error: text("error"),
+		verifiedAt: timestamp("verified_at", { withTimezone: true }),
+		createdAt: createdAt(),
+		updatedAt: timestamp("updated_at", { withTimezone: true })
+			.defaultNow()
+			.$onUpdate(() => new Date())
+			.notNull(),
+	},
+	(t) => [
+		uniqueIndex("provider_account_user_provider_idx").on(t.userId, t.provider),
+	],
+);
+
 export const serverStatus = pgEnum("server_status", [
 	"provisioning",
 	"running",
@@ -133,6 +161,8 @@ export const serverStatus = pgEnum("server_status", [
 	"deleting",
 	"deleted",
 	"error",
+	/** No longer managed: its account was disconnected or its credentials stopped working. */
+	"detached",
 ]);
 
 export const server = pgTable(
@@ -143,6 +173,10 @@ export const server = pgTable(
 		apiKeyId: text("api_key_id").references(() => apiKey.id, {
 			onDelete: "set null",
 		}),
+		providerAccountId: text("provider_account_id").references(
+			() => providerAccount.id,
+			{ onDelete: "set null" },
+		),
 		name: text("name").notNull(),
 		provider: text("provider").notNull(),
 		regionSlug: text("region_slug").notNull(),
@@ -156,7 +190,10 @@ export const server = pgTable(
 		/** e.g. "2× A100 80GB, 160 GB VRAM"; null on CPU-only plans. */
 		gpu: text("gpu"),
 		image: text("image").notNull(),
+		/** Provider list price. The provider bills this to the user directly. */
 		priceHourlyMicros: micros("price_hourly_micros").notNull(),
+		/** HessianLabs's fee, fixed when the server is created. Charged from the balance. */
+		feeHourlyMicros: micros("fee_hourly_micros").notNull().default(0),
 		status: serverStatus("status").notNull().default("provisioning"),
 		providerServerId: text("provider_server_id"),
 		ipv4: text("ipv4"),
@@ -169,7 +206,11 @@ export const server = pgTable(
 		errorMessage: text("error_message"),
 		/** Usage has been charged up to this instant. Null until the provider accepts the order. */
 		billedUntil: timestamp("billed_until", { withTimezone: true }),
+		/** Estimated provider cost so far, at list price. */
 		totalCostMicros: micros("total_cost_micros").notNull().default(0),
+		totalFeeMicros: micros("total_fee_micros").notNull().default(0),
+		/** Last time the provider was asked about this server. */
+		syncedAt: timestamp("synced_at", { withTimezone: true }),
 		suspendedAt: timestamp("suspended_at", { withTimezone: true }),
 		createdAt: createdAt(),
 		updatedAt: timestamp("updated_at", { withTimezone: true })

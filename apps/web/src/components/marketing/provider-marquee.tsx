@@ -2,6 +2,8 @@ import { cn } from "@switchyard/ui/lib/utils";
 
 import { type SiteProvider, site } from "@/lib/site";
 
+import { ProviderLogo } from "../provider-logo";
+
 const KEYFRAMES =
 	"@keyframes sy-marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}";
 
@@ -34,12 +36,13 @@ function Row({
 							// biome-ignore lint/suspicious/noArrayIndexKey: the list repeats on purpose
 							key={`${p.id}-${i}`}
 							aria-hidden={i >= providers.length}
-							className="whitespace-nowrap font-medium text-[17px] text-foreground/70 tracking-tight"
+							className="flex items-center gap-2.5 whitespace-nowrap font-medium text-[17px] text-foreground/70 tracking-tight"
 						>
+							<ProviderLogo provider={p.id} className="size-6" />
 							{p.name}
 							{p.preview && (
 								<sup className="ml-1 font-mono text-[9px] text-muted-foreground uppercase tracking-wider">
-									preview
+									soon
 								</sup>
 							)}
 						</li>
@@ -50,7 +53,7 @@ function Row({
 	);
 }
 
-/** Two endless rows of provider names: general clouds and GPU clouds. */
+/** Two endless rows of provider logos and names: general clouds and GPU clouds. */
 export function ProviderMarquee({ className }: { className?: string }) {
 	return (
 		<section
@@ -71,8 +74,9 @@ export function ProviderMarquee({ className }: { className?: string }) {
 					reverse
 				/>
 				<p className="pt-2 font-mono text-[10.5px] text-muted-foreground">
-					<span className="text-signal">preview</span> providers are simulated
-					until their live adapters ship — same API, indicative prices.
+					<span className="text-signal">soon</span> providers can't be connected
+					yet — they're in the catalog with indicative prices until their live
+					adapters ship.
 				</p>
 			</div>
 		</section>

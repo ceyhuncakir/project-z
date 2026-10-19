@@ -11,7 +11,7 @@ export function FinalCta() {
 						<span className="text-signal">12</span> / Start
 					</p>
 					<h2 className="mt-3 max-w-xl text-balance font-medium text-3xl tracking-tight sm:text-4xl">
-						Your agent's first server is thirty seconds away.
+						Connect a cloud. Your agent's first server is thirty seconds away.
 					</h2>
 				</div>
 				<div className="flex flex-col gap-3 sm:flex-row">

@@ -15,6 +15,28 @@ const TEST_URL =
 
 export const TEST_USER = "user_test";
 
+/** Seals credentials in tests. Production reads CREDENTIALS_KEY. */
+export const TEST_CREDENTIALS_KEY = Buffer.alloc(32, 7);
+
+const SANDBOX_CREDENTIALS: Record<string, Record<string, string>> = {
+	vultr: { apiKey: "sandbox-api-key" },
+	scaleway: {
+		secretKey: "sandbox-secret-key",
+		projectId: "00000000-0000-4000-8000-000000000000",
+	},
+	ovhcloud: {
+		endpoint: "ovh-eu",
+		applicationKey: "sandbox-app-key",
+		applicationSecret: "sandbox-app-secret",
+		consumerKey: "sandbox-consumer-key",
+		projectId: "sandbox-project",
+	},
+};
+
+/** Credentials that pass validation; sandbox mode never sends them anywhere. */
+export const sandboxCredentials = (provider: string) =>
+	SANDBOX_CREDENTIALS[provider] ?? { token: "sandbox-token-1234" };
+
 export function createTestDb() {
 	return createDb({ DATABASE_URL: TEST_URL });
 }
@@ -40,7 +62,7 @@ export async function prepareDatabase(db: TestDb) {
 
 export async function resetDatabase(db: TestDb) {
 	await db.execute(
-		sql`truncate table "user", wallet, credit_transaction, api_key, ssh_key, server, activity cascade`,
+		sql`truncate table "user", wallet, credit_transaction, api_key, ssh_key, provider_account, server, activity cascade`,
 	);
 	await db
 		.insert(user)

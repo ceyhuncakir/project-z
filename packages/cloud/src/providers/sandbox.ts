@@ -64,6 +64,7 @@ export function createSandboxAdapter(
 
 	return {
 		info: { ...info, mode: "sandbox" },
+		verify: async () => {},
 		listRegions: async () => referenceRegions(provider),
 		listPlans: async () => referencePlans(provider),
 		async createServer(input: CreateServerInput) {

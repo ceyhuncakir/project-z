@@ -97,7 +97,7 @@ export async function createTopupCheckout(
 						currency: "usd",
 						unit_amount: toCents(quote.creditMicros),
 						product_data: {
-							name: "Switchyard credits",
+							name: "HessianLabs credits",
 							description: "Prepaid balance for servers on any provider",
 						},
 					},
@@ -117,7 +117,7 @@ export async function createTopupCheckout(
 			metadata,
 			payment_intent_data: {
 				metadata,
-				description: `Switchyard credits ${formatUsd(quote.creditMicros)}`,
+				description: `HessianLabs credits ${formatUsd(quote.creditMicros)}`,
 				...(input.saveCard
 					? { setup_future_usage: "off_session" as const }
 					: {}),
@@ -455,7 +455,7 @@ export async function runAutoTopups(svc: Services, now = new Date()) {
 					payment_method: w.stripePaymentMethodId as string,
 					off_session: true,
 					confirm: true,
-					description: `Switchyard auto top-up ${formatUsd(quote.creditMicros)}`,
+					description: `HessianLabs auto top-up ${formatUsd(quote.creditMicros)}`,
 					metadata: {
 						userId: w.userId,
 						creditMicros: String(quote.creditMicros),

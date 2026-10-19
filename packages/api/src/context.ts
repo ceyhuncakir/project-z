@@ -11,6 +11,10 @@ export interface AppConfig {
 	apiUrl: string;
 	allowTestCredits: boolean;
 	githubAuth: boolean;
+	/** HessianLabs's fee in basis points of each server's list price (500 = 5%). */
+	feeBps: number;
+	/** AES-256 key that seals users' cloud credentials. */
+	credentialsKey: Buffer;
 	stripe: { client: Stripe; webhookSecret: string | null } | null;
 }
 
