@@ -9,17 +9,17 @@ const ROWS = [
 		state: "selected",
 	},
 	{
-		provider: "ovhcloud",
-		plan: "d2-4",
-		where: "Gravelines, FR",
-		price: "$0.0170",
+		provider: "hetzner",
+		plan: "cax11",
+		where: "Nuremberg, DE",
+		price: "$0.0062",
 		state: "fallback",
 	},
 	{
-		provider: "digitalocean",
-		plan: "s-2vcpu-4gb",
-		where: "Amsterdam, NL",
-		price: "$0.0357",
+		provider: "contabo",
+		plan: "cloud-vps-10",
+		where: "Nuremberg, DE",
+		price: "$0.0075",
 		state: "fallback",
 	},
 ] as const;
@@ -40,7 +40,7 @@ export function RoutingVisual() {
 			<div className="divide-y border bg-background">
 				{ROWS.map((r, i) => (
 					<div
-						key={r.provider}
+						key={r.plan}
 						className={cn(
 							"grid grid-cols-[1.25rem_1fr_auto] items-center gap-2 px-3 py-2 sm:grid-cols-[1.25rem_7rem_1fr_auto_5.5rem]",
 							r.state === "selected" && "bg-signal/[0.07]",

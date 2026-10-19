@@ -1,5 +1,6 @@
 import { buttonVariants } from "@switchyard/ui/components/button";
 import { Link } from "@tanstack/react-router";
+import { ArrowRightIcon } from "lucide-react";
 
 import { authClient } from "@/lib/auth-client";
 
@@ -8,6 +9,7 @@ import { ThemeToggle } from "../theme-toggle";
 
 const NAV = [
 	{ to: "/catalog", label: "Catalog" },
+	{ to: "/", hash: "gpu", label: "GPUs" },
 	{ to: "/docs", label: "Docs" },
 	{ to: "/", hash: "pricing", label: "Pricing" },
 ] as const;
@@ -15,7 +17,18 @@ const NAV = [
 export function SiteHeader() {
 	const { data: session } = authClient.useSession();
 	return (
-		<header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur-md">
+		<>
+			<Link
+				to="/"
+				hash="gpu"
+				className="group flex items-center justify-center gap-2 border-b bg-foreground px-4 py-2 text-center font-mono text-[11px] text-background/80 transition-colors hover:text-background"
+			>
+				<span className="text-signal">New</span>
+				<span className="text-background/40">·</span>
+				GPU clouds for LLM hosting
+				<ArrowRightIcon className="size-3 transition-transform group-hover:translate-x-0.5" />
+			</Link>
+			<header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur-md">
 			<div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-5">
 				<div className="flex items-center gap-8">
 					<Logo />
@@ -61,6 +74,7 @@ export function SiteHeader() {
 					)}
 				</div>
 			</div>
-		</header>
+			</header>
+		</>
 	);
 }
