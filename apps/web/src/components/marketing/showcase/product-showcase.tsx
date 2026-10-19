@@ -1,10 +1,15 @@
 import { cn } from "@switchyard/ui/lib/utils";
-import { AnimatePresence, motion, useInView, useReducedMotion, useTransform } from "motion/react";
-import { useRef, useState } from "react";
+import { AnimatePresence, motion, useInView, useTransform } from "motion/react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useReducedMotionSafe } from "../section";
 import { useSceneClock } from "./clock";
 import { LLM_DURATION, LLM_STATIC_T, SceneLlm } from "./scene-llm";
-import { PROVISION_DURATION, PROVISION_STATIC_T, SceneProvision } from "./scene-provision";
+import {
+	PROVISION_DURATION,
+	PROVISION_STATIC_T,
+	SceneProvision,
+} from "./scene-provision";
 import { ROUTE_DURATION, ROUTE_STATIC_T, SceneRoute } from "./scene-route";
 
 const SCENES = [
@@ -41,23 +46,41 @@ const SCENES = [
 export function ProductShowcase({ className }: { className?: string }) {
 	const ref = useRef<HTMLDivElement>(null);
 	const inView = useInView(ref, { amount: 0.35 });
-	const reduce = useReducedMotion();
+	const reduce = useReducedMotionSafe();
 	const [active, setActive] = useState(0);
 	const [run, setRun] = useState(0);
 	const [hovered, setHovered] = useState(false);
 	const scene = SCENES[active] ?? SCENES[0];
 
-	const playing = inView && !hovered && !reduce;
-	const { t, progress } = useSceneClock(scene.duration, playing, `${active}:${run}`, () => {
+	// Scenes always play to the end while visible; hovering only holds the
+	// finished frame instead of advancing, so clicking a tab never freezes it.
+	const playing = inView && !reduce;
+	const [held, setHeld] = useState(false);
+	const hoveredRef = useRef(false);
+	hoveredRef.current = hovered;
+	const advance = useCallback(() => {
+		setHeld(false);
 		setActive((a) => (a + 1) % SCENES.length);
 		setRun((r) => r + 1);
-	});
+	}, []);
+	const { t, progress } = useSceneClock(
+		scene.duration,
+		playing,
+		`${active}:${run}`,
+		() => (hoveredRef.current ? setHeld(true) : advance()),
+	);
+	useEffect(() => {
+		if (held && !hovered) advance();
+	}, [held, hovered, advance]);
 	const Scene = scene.Scene;
 
 	return (
 		<div
 			ref={ref}
-			className={cn("overflow-hidden border bg-card shadow-[0_24px_60px_-30px_rgb(0_0_0/0.25)]", className)}
+			className={cn(
+				"overflow-hidden border bg-card shadow-[0_24px_60px_-30px_rgb(0_0_0/0.25)]",
+				className,
+			)}
 			onPointerEnter={() => setHovered(true)}
 			onPointerLeave={() => setHovered(false)}
 		>
@@ -71,12 +94,21 @@ export function ProductShowcase({ className }: { className?: string }) {
 					</span>
 				</div>
 				<span className="inline-flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
-					<span className={cn("size-1.5 rounded-full bg-go", playing && "animate-pulse-dot")} />
-					{playing ? "live demo" : reduce ? "still" : "paused"}
+					<span
+						className={cn(
+							"size-1.5 rounded-full bg-go",
+							playing && !held && "animate-pulse-dot",
+						)}
+					/>
+					{reduce ? "still" : playing && !held ? "live demo" : "paused"}
 				</span>
 			</div>
 
-			<div role="tablist" aria-label="Product demo scenes" className="grid grid-cols-3 border-b">
+			<div
+				role="tablist"
+				aria-label="Product demo scenes"
+				className="grid grid-cols-3 border-b"
+			>
 				{SCENES.map((s, i) => (
 					<button
 						key={s.id}
@@ -84,6 +116,7 @@ export function ProductShowcase({ className }: { className?: string }) {
 						role="tab"
 						aria-selected={i === active}
 						onClick={() => {
+							setHeld(false);
 							setActive(i);
 							setRun((r) => r + 1);
 						}}
@@ -93,7 +126,9 @@ export function ProductShowcase({ className }: { className?: string }) {
 							i > 0 && "border-l",
 						)}
 					>
-						<span className="block font-mono text-[10px] text-muted-foreground">0{i + 1}</span>
+						<span className="block font-mono text-[10px] text-muted-foreground">
+							0{i + 1}
+						</span>
 						<span
 							className={cn(
 								"block truncate font-medium text-[12.5px] sm:text-[13px]",
@@ -103,7 +138,9 @@ export function ProductShowcase({ className }: { className?: string }) {
 							{s.label}
 						</span>
 						<span className="absolute inset-x-0 bottom-0 h-0.5 bg-transparent">
-							{i === active && <ProgressBar progress={progress} full={Boolean(reduce)} />}
+							{i === active && (
+								<ProgressBar progress={progress} full={Boolean(reduce)} />
+							)}
 						</span>
 					</button>
 				))}
@@ -135,5 +172,10 @@ function ProgressBar({
 	full: boolean;
 }) {
 	const scaleX = useTransform(progress, (p) => (full ? 1 : p));
-	return <motion.span className="absolute inset-0 origin-left bg-signal" style={{ scaleX }} />;
+	return (
+		<motion.span
+			className="absolute inset-0 origin-left bg-signal"
+			style={{ scaleX }}
+		/>
+	);
 }

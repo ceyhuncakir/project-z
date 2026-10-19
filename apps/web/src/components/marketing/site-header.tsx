@@ -29,51 +29,51 @@ export function SiteHeader() {
 				<ArrowRightIcon className="size-3 transition-transform group-hover:translate-x-0.5" />
 			</Link>
 			<header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur-md">
-			<div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-5">
-				<div className="flex items-center gap-8">
-					<Logo />
-					<nav className="hidden items-center gap-6 text-[13px] text-muted-foreground md:flex">
-						{NAV.map((item) => (
+				<div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-5">
+					<div className="flex items-center gap-8">
+						<Logo />
+						<nav className="hidden items-center gap-6 text-[13px] text-muted-foreground md:flex">
+							{NAV.map((item) => (
+								<Link
+									key={item.label}
+									to={item.to}
+									hash={"hash" in item ? item.hash : undefined}
+									className="transition-colors hover:text-foreground"
+									activeProps={{ className: "text-foreground" }}
+									activeOptions={{ exact: true, includeHash: true }}
+								>
+									{item.label}
+								</Link>
+							))}
+						</nav>
+					</div>
+					<div className="flex items-center gap-1.5">
+						<ThemeToggle />
+						{session ? (
 							<Link
-								key={item.label}
-								to={item.to}
-								hash={"hash" in item ? item.hash : undefined}
-								className="transition-colors hover:text-foreground"
-								activeProps={{ className: "text-foreground" }}
-								activeOptions={{ exact: true, includeHash: true }}
-							>
-								{item.label}
-							</Link>
-						))}
-					</nav>
-				</div>
-				<div className="flex items-center gap-1.5">
-					<ThemeToggle />
-					{session ? (
-						<Link
-							to="/dashboard"
-							className={buttonVariants({ variant: "signal", size: "sm" })}
-						>
-							Dashboard
-						</Link>
-					) : (
-						<>
-							<Link
-								to="/login"
-								className={buttonVariants({ variant: "ghost", size: "sm" })}
-							>
-								Sign in
-							</Link>
-							<Link
-								to="/signup"
+								to="/dashboard"
 								className={buttonVariants({ variant: "signal", size: "sm" })}
 							>
-								Get started
+								Dashboard
 							</Link>
-						</>
-					)}
+						) : (
+							<>
+								<Link
+									to="/login"
+									className={buttonVariants({ variant: "ghost", size: "sm" })}
+								>
+									Sign in
+								</Link>
+								<Link
+									to="/signup"
+									className={buttonVariants({ variant: "signal", size: "sm" })}
+								>
+									Get started
+								</Link>
+							</>
+						)}
+					</div>
 				</div>
-			</div>
 			</header>
 		</>
 	);

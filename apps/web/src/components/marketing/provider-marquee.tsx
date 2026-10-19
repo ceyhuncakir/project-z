@@ -2,7 +2,8 @@ import { cn } from "@switchyard/ui/lib/utils";
 
 import { type SiteProvider, site } from "@/lib/site";
 
-const KEYFRAMES = "@keyframes sy-marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}";
+const KEYFRAMES =
+	"@keyframes sy-marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}";
 
 function Row({
 	label,
@@ -52,14 +53,26 @@ function Row({
 /** Two endless rows of provider names: general clouds and GPU clouds. */
 export function ProviderMarquee({ className }: { className?: string }) {
 	return (
-		<section className={cn("border-b", className)} aria-label="Supported providers">
+		<section
+			className={cn("border-b", className)}
+			aria-label="Supported providers"
+		>
 			<style>{KEYFRAMES}</style>
 			<div className="mx-auto max-w-6xl space-y-1 px-5 py-6">
-				<Row label="General clouds" providers={site.cloudProviders} duration={48} />
-				<Row label="GPU clouds" providers={site.gpuProviders} duration={40} reverse />
+				<Row
+					label="General clouds"
+					providers={site.cloudProviders}
+					duration={48}
+				/>
+				<Row
+					label="GPU clouds"
+					providers={site.gpuProviders}
+					duration={40}
+					reverse
+				/>
 				<p className="pt-2 font-mono text-[10.5px] text-muted-foreground">
-					<span className="text-signal">preview</span> providers are simulated until their live adapters ship —
-					same API, indicative prices.
+					<span className="text-signal">preview</span> providers are simulated
+					until their live adapters ship — same API, indicative prices.
 				</p>
 			</div>
 		</section>

@@ -15,7 +15,10 @@ export function FinalCta() {
 					</h2>
 				</div>
 				<div className="flex flex-col gap-3 sm:flex-row">
-					<Link to="/signup" className={buttonVariants({ variant: "signal", size: "xl" })}>
+					<Link
+						to="/signup"
+						className={buttonVariants({ variant: "signal", size: "xl" })}
+					>
 						Create an account <ArrowRightIcon />
 					</Link>
 					<Link

@@ -9,8 +9,9 @@ const CASES = [
 	{
 		id: "ci",
 		label: "CI & test runners",
-		prompt: "Run the integration suite on a fresh 4 vCPU box, then tear it down.",
-		call: `create_server({\n  min_vcpu: 4,\n  min_memory_gb: 8,\n  continents: ["EU"],\n  user_data: "#!/bin/sh\\ncurl -fsSL get.docker.com | sh"\n})`,
+		prompt:
+			"Run the integration suite on a fresh 4 vCPU box, then tear it down.",
+		call: `create_server({\n  min_vcpu: 4,\n  min_memory_gb: 8,\n  continents: ["EU"],\n  labels: { job: "integration" }\n})\n// … run the suite over SSH, then\ndelete_server({ id })`,
 		result: "contabo:cloud-vps-10 · Nuremberg · $0.0075/h",
 		cost: "≈ $0.0075 per run",
 		note: "One-hour minimum per server, however short the run.",
@@ -36,7 +37,8 @@ const CASES = [
 	{
 		id: "data",
 		label: "Data & scraping jobs",
-		prompt: "Run the crawler from the US, Germany and Japan, then merge the results.",
+		prompt:
+			"Run the crawler from the US, Germany and Japan, then merge the results.",
 		call: `// three calls, one per country\ncreate_server({ countries: ["US"] })\ncreate_server({ countries: ["DE"] })\ncreate_server({ countries: ["JP"] })`,
 		result: "3 servers · 3 countries · one balance",
 		cost: "≈ $0.02 per hour for all three",
@@ -61,7 +63,11 @@ export function UseCases() {
 	return (
 		<section className="border-y bg-card/50">
 			<div className="mx-auto max-w-6xl px-5 py-24">
-				<SectionIntro index="03" label="Use cases" title="What agents do with a server room." />
+				<SectionIntro
+					index="03"
+					label="Use cases"
+					title="What agents do with a server room."
+				/>
 				<Reveal className="mt-10">
 					<LayoutGroup id="use-cases">
 						<div role="tablist" className="flex gap-1 overflow-x-auto border-b">
@@ -74,12 +80,17 @@ export function UseCases() {
 									onClick={() => setActive(i)}
 									className={cn(
 										"relative shrink-0 px-3 py-2.5 text-[13px] transition-colors",
-										i === active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+										i === active
+											? "text-foreground"
+											: "text-muted-foreground hover:text-foreground",
 									)}
 								>
 									{c.label}
 									{i === active && (
-										<motion.span layoutId="use-case-underline" className="absolute inset-x-0 -bottom-px h-0.5 bg-signal" />
+										<motion.span
+											layoutId="use-case-underline"
+											className="absolute inset-x-0 -bottom-px h-0.5 bg-signal"
+										/>
 									)}
 								</button>
 							))}
@@ -92,21 +103,27 @@ export function UseCases() {
 							animate={{ opacity: 1, y: 0 }}
 							exit={{ opacity: 0, y: -6 }}
 							transition={{ duration: 0.25 }}
-							className="mt-8 grid gap-8 lg:grid-cols-[1fr_1.15fr]"
+							className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_1.15fr]"
 						>
-							<div className="space-y-6">
+							<div className="min-w-0 space-y-6">
 								<div>
 									<p className="label-mono">The prompt</p>
-									<p className="mt-3 text-balance font-medium text-2xl leading-snug tracking-tight">“{item.prompt}”</p>
+									<p className="mt-3 text-balance font-medium text-2xl leading-snug tracking-tight">
+										“{item.prompt}”
+									</p>
 								</div>
 								<dl className="grid grid-cols-2 gap-px border bg-border text-sm">
 									<div className="bg-background p-4">
 										<dt className="label-mono">Routed to</dt>
-										<dd className="mt-1.5 font-mono text-[12px]">{item.result}</dd>
+										<dd className="mt-1.5 font-mono text-[12px]">
+											{item.result}
+										</dd>
 									</div>
 									<div className="bg-background p-4">
 										<dt className="label-mono">Typical cost</dt>
-										<dd className="mt-1.5 font-medium text-signal">{item.cost}</dd>
+										<dd className="mt-1.5 font-medium text-signal">
+											{item.cost}
+										</dd>
 									</div>
 								</dl>
 								<p className="text-muted-foreground text-sm">{item.note}</p>

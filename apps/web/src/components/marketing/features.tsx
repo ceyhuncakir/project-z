@@ -1,6 +1,13 @@
 import { cn } from "@switchyard/ui/lib/utils";
+import {
+	BanknoteIcon,
+	CpuIcon,
+	GaugeIcon,
+	KeyRoundIcon,
+	ListChecksIcon,
+	TerminalSquareIcon,
+} from "lucide-react";
 import { motion } from "motion/react";
-import { BanknoteIcon, CpuIcon, GaugeIcon, KeyRoundIcon, ListChecksIcon, TerminalSquareIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { RoutingVisual } from "./routing-visual";
@@ -23,17 +30,26 @@ function Tile({
 }) {
 	return (
 		<motion.div
-			className={cn("group flex flex-col gap-3 bg-background p-6 transition-colors hover:bg-card", className)}
+			className={cn(
+				"group flex min-w-0 flex-col gap-3 bg-background p-6 transition-colors hover:bg-card",
+				className,
+			)}
 			initial={{ opacity: 0, y: 14 }}
 			whileInView={{ opacity: 1, y: 0 }}
 			viewport={{ once: true, margin: "-60px" }}
-			transition={{ duration: 0.5, delay: (index % 3) * 0.07, ease: [0.22, 1, 0.36, 1] }}
+			transition={{
+				duration: 0.5,
+				delay: (index % 3) * 0.07,
+				ease: [0.22, 1, 0.36, 1],
+			}}
 		>
 			<div className="flex items-center gap-2 text-muted-foreground transition-colors group-hover:text-signal [&_svg]:size-4">
 				{icon}
 			</div>
 			<h3 className="font-medium text-[17px] tracking-tight">{title}</h3>
-			<p className="max-w-md text-muted-foreground text-sm leading-relaxed">{body}</p>
+			<p className="max-w-md text-muted-foreground text-sm leading-relaxed">
+				{body}
+			</p>
 			{children && <div className="mt-auto pt-4">{children}</div>}
 		</motion.div>
 	);
@@ -42,8 +58,12 @@ function Tile({
 export function Features() {
 	return (
 		<section className="mx-auto max-w-6xl px-5 py-24">
-			<SectionIntro index="04" label="Why route" title="Built for software that buys its own infrastructure." />
-			<div className="mt-12 grid gap-px border bg-border md:grid-cols-6">
+			<SectionIntro
+				index="04"
+				label="Why route"
+				title="Built for software that buys its own infrastructure."
+			/>
+			<div className="mt-12 grid grid-cols-1 gap-px border bg-border md:grid-cols-6">
 				<Tile
 					index={0}
 					className="md:col-span-4"
@@ -60,10 +80,12 @@ export function Features() {
 					title="Per-minute billing"
 					body="One balance across every provider, charged by the minute. Destroy a server and billing stops."
 				>
-					<p className="font-medium text-4xl tabular tracking-tight">
+					<p className="tabular font-medium text-4xl tracking-tight">
 						$0.0055<span className="text-base text-muted-foreground">/h</span>
 					</p>
-					<p className="mt-1 font-mono text-[11px] text-muted-foreground">2 vCPU · 4 GB · Falkenstein</p>
+					<p className="mt-1 font-mono text-[11px] text-muted-foreground">
+						2 vCPU · 4 GB · Falkenstein
+					</p>
 				</Tile>
 				<Tile
 					index={2}
@@ -90,11 +112,15 @@ export function Features() {
 						</div>
 						<div className="h-1 overflow-hidden bg-muted">
 							<motion.div
-								className="h-full origin-left bg-signal"
-								initial={{ scaleX: 0 }}
-								whileInView={{ scaleX: 0.32 }}
+								className="h-full bg-signal"
+								initial={{ width: "0%" }}
+								whileInView={{ width: "32%" }}
 								viewport={{ once: true }}
-								transition={{ duration: 1, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
+								transition={{
+									duration: 1,
+									delay: 0.3,
+									ease: [0.22, 1, 0.36, 1],
+								}}
 							/>
 						</div>
 					</div>
@@ -115,7 +141,11 @@ export function Features() {
 				>
 					<ul className="divide-y border bg-card font-mono text-[11px]">
 						{[
-							["mcp", "Created fsn1-x0d3a7 (CX23, Falkenstein) on Hetzner", "2m"],
+							[
+								"mcp",
+								"Created fsn1-x0d3a7 (CX23, Falkenstein) on Hetzner",
+								"2m",
+							],
 							["mcp", "Deleted fsn1-x0d3a7", "1m"],
 						].map(([actor, msg, t]) => (
 							<li key={msg} className="flex gap-3 px-3 py-2">

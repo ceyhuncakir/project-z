@@ -9,21 +9,29 @@ import { useState } from "react";
 import { flag, formatUsd } from "@/lib/format";
 import { orpc } from "@/utils/orpc";
 
-import { Reveal, SectionIntro } from "./section";
+import { hourlyPrice, Reveal, SectionIntro } from "./section";
 
 export const BOARDS = [
 	{
 		id: "cpu",
 		label: "CPU · 2 vCPU / 4 GB",
 		query: orpc.catalog.plans.queryOptions({
-			input: { filters: { kind: "cpu", minVcpu: 2, minMemoryGb: 4 }, sort: "price", limit: 500 },
+			input: {
+				filters: { kind: "cpu", minVcpu: 2, minMemoryGb: 4 },
+				sort: "price",
+				limit: 500,
+			},
 		}),
 	},
 	{
 		id: "gpu",
 		label: "GPU · ≥ 80 GB VRAM",
 		query: orpc.catalog.plans.queryOptions({
-			input: { filters: { kind: "gpu", minVramGb: 80 }, sort: "price", limit: 500 },
+			input: {
+				filters: { kind: "gpu", minVramGb: 80 },
+				sort: "price",
+				limit: 500,
+			},
 		}),
 	},
 ] as const;
@@ -33,7 +41,8 @@ export function PriceBoard() {
 	const board = BOARDS[active] ?? BOARDS[0];
 	const { data } = useQuery(board.query);
 	const cheapest = new Map<string, NonNullable<typeof data>["plans"][number]>();
-	for (const p of data?.plans ?? []) if (!cheapest.has(p.provider)) cheapest.set(p.provider, p);
+	for (const p of data?.plans ?? [])
+		if (!cheapest.has(p.provider)) cheapest.set(p.provider, p);
 	const rows = [...cheapest.values()];
 
 	return (
@@ -61,12 +70,17 @@ export function PriceBoard() {
 								onClick={() => setActive(i)}
 								className={cn(
 									"relative px-4 py-3 font-mono text-[12px] transition-colors",
-									i === active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+									i === active
+										? "text-foreground"
+										: "text-muted-foreground hover:text-foreground",
 								)}
 							>
 								{b.label}
 								{i === active && (
-									<motion.span layoutId="board-underline" className="absolute inset-x-0 -bottom-px h-0.5 bg-signal" />
+									<motion.span
+										layoutId="board-underline"
+										className="absolute inset-x-0 -bottom-px h-0.5 bg-signal"
+									/>
 								)}
 							</button>
 						))}
@@ -75,7 +89,14 @@ export function PriceBoard() {
 				<div className="overflow-x-auto">
 					<div className="min-w-[640px]">
 						<div className="grid grid-cols-[1.3fr_1.3fr_1.6fr_1fr_0.9fr_0.9fr] border-b px-4 py-3">
-							{["Provider", "Plan", "Specs", "Regions", "Per hour", "Per month"].map((h) => (
+							{[
+								"Provider",
+								"Plan",
+								"Specs",
+								"Regions",
+								"Per hour",
+								"Per month",
+							].map((h) => (
 								<span key={h} className="label-mono">
 									{h}
 								</span>
@@ -105,9 +126,15 @@ export function PriceBoard() {
 									>
 										<span className="font-medium">
 											{p.providerName}
-											{i === 0 && <span className="ml-2 font-mono text-[10px] text-signal uppercase">cheapest</span>}
+											{i === 0 && (
+												<span className="ml-2 font-mono text-[10px] text-signal uppercase">
+													cheapest
+												</span>
+											)}
 										</span>
-										<span className="truncate font-mono text-[12px]">{p.name}</span>
+										<span className="truncate font-mono text-[12px]">
+											{p.name}
+										</span>
 										<span className="truncate text-muted-foreground">
 											{p.gpu
 												? `${p.gpu.count}× ${p.gpu.model} · ${p.gpu.totalVramGb} GB`
@@ -120,8 +147,12 @@ export function PriceBoard() {
 												.join(" ")}
 											{p.regions.length > 4 && ` +${p.regions.length - 4}`}
 										</span>
-										<span className="font-mono tabular">{formatUsd(p.priceHourlyMicros, { precise: true })}</span>
-										<span className="font-mono text-muted-foreground tabular">{formatUsd(p.priceMonthlyMicros)}</span>
+										<span className="tabular font-mono">
+											{hourlyPrice(p.priceHourlyMicros)}
+										</span>
+										<span className="tabular font-mono text-muted-foreground">
+											{formatUsd(p.priceMonthlyMicros)}
+										</span>
 									</motion.li>
 								))}
 							</AnimatePresence>

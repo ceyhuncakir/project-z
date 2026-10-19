@@ -44,7 +44,9 @@ export function Faq() {
 						{item.q}
 						<PlusIcon className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-45" />
 					</summary>
-					<p className="max-w-2xl pb-5 text-muted-foreground text-sm leading-relaxed">{item.a}</p>
+					<p className="max-w-2xl pb-5 text-muted-foreground text-sm leading-relaxed">
+						{item.a}
+					</p>
 				</details>
 			))}
 		</div>

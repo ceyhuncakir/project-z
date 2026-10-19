@@ -4,13 +4,18 @@ export function Pricing() {
 	return (
 		<section id="pricing" className="scroll-mt-20 border-y bg-card/50">
 			<div className="mx-auto max-w-6xl px-5 py-24">
-				<SectionIntro index="10" label="Pricing" title="Provider prices. Zero markup." />
-				<div className="mt-10 grid gap-12 lg:grid-cols-2">
+				<SectionIntro
+					index="10"
+					label="Pricing"
+					title="Provider prices. Zero markup."
+				/>
+				<div className="mt-10 grid grid-cols-1 gap-12 lg:grid-cols-2">
 					<Reveal>
 						<p className="max-w-md text-muted-foreground text-sm leading-relaxed">
-							You pay exactly the hourly price each provider lists. We add 5% (minimum $0.50) when you add
-							credits — the same model OpenRouter uses for models. Payments run through Stripe; the fee shows
-							as its own line on the receipt.
+							You pay exactly the hourly price each provider lists. We add 5%
+							(minimum $0.50) when you add credits — the same model OpenRouter
+							uses for models. Payments run through Stripe; the fee shows as its
+							own line on the receipt.
 						</p>
 						<ul className="mt-8 space-y-3 text-sm">
 							{[
@@ -31,7 +36,9 @@ export function Pricing() {
 					<Reveal delay={0.1} className="border bg-background">
 						<div className="flex items-center justify-between border-b px-6 py-4">
 							<p className="label-mono">Example top-up</p>
-							<p className="font-mono text-[11px] text-muted-foreground">Stripe Checkout</p>
+							<p className="font-mono text-[11px] text-muted-foreground">
+								Stripe Checkout
+							</p>
 						</div>
 						<dl className="divide-y font-mono text-sm">
 							{[
@@ -45,12 +52,14 @@ export function Pricing() {
 								</div>
 							))}
 							<div className="flex justify-between gap-4 bg-card px-6 py-4">
-								<dt className="text-muted-foreground">Runs a 2 vCPU / 4 GB box for</dt>
-								<dd className="text-signal tabular">~9,100 hours</dd>
+								<dt className="text-muted-foreground">
+									Runs a 2 vCPU / 4 GB box for
+								</dt>
+								<dd className="tabular text-signal">~9,100 hours</dd>
 							</div>
 							<div className="flex justify-between gap-4 bg-card px-6 py-4">
 								<dt className="text-muted-foreground">…or an 80 GB A100 for</dt>
-								<dd className="text-signal tabular">~52 hours</dd>
+								<dd className="tabular text-signal">~52 hours</dd>
 							</div>
 						</dl>
 					</Reveal>

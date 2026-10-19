@@ -3,11 +3,10 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { useState } from "react";
 
-import { formatUsd } from "@/lib/format";
 import { orpc } from "@/utils/orpc";
 
 import { CodeBlock } from "../code-block";
-import { Reveal, SectionIntro } from "./section";
+import { hourly, Reveal, SectionIntro } from "./section";
 
 export const llmModelsQuery = orpc.catalog.llmModels.queryOptions();
 
@@ -49,7 +48,7 @@ export function LlmSizer() {
 					</span>
 				</SectionIntro>
 
-				<Reveal className="mt-10 grid gap-6 lg:grid-cols-[1.1fr_1fr]">
+				<Reveal className="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-[1.1fr_1fr]">
 					<div className="border bg-background">
 						<div className="space-y-5 p-5">
 							<div>
@@ -70,7 +69,10 @@ export function LlmSizer() {
 												)}
 											>
 												{m.id === model && (
-													<motion.span layoutId="sizer-model-pill" className="absolute inset-0 bg-foreground" />
+													<motion.span
+														layoutId="sizer-model-pill"
+														className="absolute inset-0 bg-foreground"
+													/>
 												)}
 												<span className="relative">{m.name}</span>
 											</button>
@@ -88,8 +90,10 @@ export function LlmSizer() {
 											aria-pressed={p.id === precision}
 											onClick={() => setPrecision(p.id)}
 											className={cn(
-												"border-l px-3 py-1.5 first:border-l-0 transition-colors",
-												p.id === precision ? "bg-signal/10 text-signal" : "text-muted-foreground hover:text-foreground",
+												"border-l px-3 py-1.5 transition-colors first:border-l-0",
+												p.id === precision
+													? "bg-signal/10 text-signal"
+													: "text-muted-foreground hover:text-foreground",
 											)}
 										>
 											{p.label}
@@ -101,7 +105,7 @@ export function LlmSizer() {
 						<div className="border-t p-5">
 							<div className="flex items-baseline justify-between">
 								<span className="label-mono">GPU memory needed</span>
-								<span className="font-medium text-3xl tabular tracking-tight">
+								<span className="tabular font-medium text-3xl tracking-tight">
 									{s?.vramGb ?? "—"}
 									<span className="text-base text-muted-foreground"> GB</span>
 								</span>
@@ -124,7 +128,9 @@ export function LlmSizer() {
 
 					<div className="flex min-w-0 flex-col gap-4">
 						<div className="border bg-background">
-							<p className="label-mono border-b px-4 py-3">Cheapest plans that fit</p>
+							<p className="label-mono border-b px-4 py-3">
+								Cheapest plans that fit
+							</p>
 							<ul className="divide-y">
 								<AnimatePresence initial={false} mode="popLayout">
 									{s?.plans.slice(0, 3).map((p, i) => (
@@ -135,25 +141,37 @@ export function LlmSizer() {
 											animate={{ opacity: 1, x: 0 }}
 											exit={{ opacity: 0, x: -10 }}
 											transition={{ duration: 0.3 }}
-											className={cn("flex items-center justify-between gap-3 px-4 py-3", i === 0 && "bg-signal/[0.05]")}
+											className={cn(
+												"flex items-center justify-between gap-3 px-4 py-3",
+												i === 0 && "bg-signal/[0.05]",
+											)}
 										>
 											<div className="min-w-0">
 												<p className="truncate font-medium text-[13.5px]">
 													{p.providerName} · {p.name}
 												</p>
 												<p className="truncate font-mono text-[11px] text-muted-foreground">
-													{p.gpu ? `${p.gpu.count}× ${p.gpu.model} · ${p.gpu.totalVramGb} GB VRAM` : ""} · {p.regions[0]?.city}
+													{p.gpu
+														? `${p.gpu.count}× ${p.gpu.model} · ${p.gpu.totalVramGb} GB VRAM`
+														: ""}{" "}
+													· {p.regions[0]?.city}
 												</p>
 											</div>
-											<span className={cn("shrink-0 font-mono text-[13px] tabular", i === 0 && "text-signal")}>
-												{formatUsd(p.priceHourlyMicros, { precise: true })}/h
+											<span
+												className={cn(
+													"tabular shrink-0 font-mono text-[13px]",
+													i === 0 && "text-signal",
+												)}
+											>
+												{hourly(p.priceHourlyMicros)}
 											</span>
 										</motion.li>
 									))}
 								</AnimatePresence>
 								{s && !s.plans.length && (
 									<li className="px-4 py-6 text-muted-foreground text-sm">
-										Nothing in the catalog fits this one yet — try a lower precision.
+										Nothing in the catalog fits this one yet — try a lower
+										precision.
 									</li>
 								)}
 							</ul>

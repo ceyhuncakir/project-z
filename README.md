@@ -14,11 +14,13 @@ done.
 
 ![Landing page](docs/screenshots/landing.png)
 
-| Dashboard | New server (auto-route) |
+| Product showcase (animated) | Mobile |
 | --- | --- |
-| ![Dashboard](docs/screenshots/dashboard.png) | ![New server](docs/screenshots/new-server.png) |
-| **Catalog** | **Dark mode** |
-| ![Catalog](docs/screenshots/catalog.png) | ![Dark mode](docs/screenshots/landing-dark.png) |
+| ![Showcase](docs/screenshots/landing-showcase.png) | ![Mobile](docs/screenshots/landing-mobile.png) |
+| **GPU catalog** | **Credits (Stripe + auto top-up)** |
+| ![GPU catalog](docs/screenshots/catalog-gpu.png) | ![Credits](docs/screenshots/credits.png) |
+| **Dashboard** | **Dark mode** |
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Dark mode](docs/screenshots/landing-dark.png) |
 
 ## What's in the box
 

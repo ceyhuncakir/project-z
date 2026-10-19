@@ -28,9 +28,15 @@ export function SceneLlm({ t }: { t: number }) {
 	const plans = ranked ? RANKED : PLANS;
 
 	return (
-		<div className="grid h-full gap-px bg-border md:grid-cols-[1fr_1.1fr]">
+		<div className="grid h-full grid-cols-1 gap-px bg-border md:grid-cols-[1fr_1.1fr]">
 			<div className="flex min-w-0 flex-col bg-card">
-				<PanelTitle right={<span className="font-mono text-[10.5px] text-muted-foreground">size_llm</span>}>
+				<PanelTitle
+					right={
+						<span className="font-mono text-[10.5px] text-muted-foreground">
+							size_llm
+						</span>
+					}
+				>
 					Model
 				</PanelTitle>
 				<div className="space-y-4 px-4 py-4">
@@ -45,7 +51,10 @@ export function SceneLlm({ t }: { t: number }) {
 									)}
 								>
 									{i === model && (
-										<motion.span layoutId="model-pill" className="absolute inset-0 bg-foreground" />
+										<motion.span
+											layoutId="model-pill"
+											className="absolute inset-0 bg-foreground"
+										/>
 									)}
 									<span className="relative">{m}</span>
 								</span>
@@ -57,10 +66,16 @@ export function SceneLlm({ t }: { t: number }) {
 							{PRECISIONS.map((p, i) => (
 								<span
 									key={p}
-									className={cn("relative px-2.5 py-1", i === precision ? "text-signal" : "text-muted-foreground")}
+									className={cn(
+										"relative px-2.5 py-1",
+										i === precision ? "text-signal" : "text-muted-foreground",
+									)}
 								>
 									{i === precision && (
-										<motion.span layoutId="precision-pill" className="absolute inset-0 bg-signal/10" />
+										<motion.span
+											layoutId="precision-pill"
+											className="absolute inset-0 bg-signal/10"
+										/>
 									)}
 									<span className="relative">{p}</span>
 								</span>
@@ -70,7 +85,7 @@ export function SceneLlm({ t }: { t: number }) {
 					<div>
 						<div className="flex items-baseline justify-between font-mono text-[11px]">
 							<span className="text-muted-foreground">GPU memory needed</span>
-							<span className="text-[15px] text-foreground tabular">
+							<span className="tabular text-[15px] text-foreground">
 								{Math.round(NEED_GB * phase(t, 1_400, 1_000))} GB
 							</span>
 						</div>
@@ -92,12 +107,20 @@ export function SceneLlm({ t }: { t: number }) {
 						</div>
 						<div className="relative mt-1 h-3 font-mono text-[9.5px] text-muted-foreground">
 							{[24, 48, 80, 141].map((gb) => (
-								<span key={gb} className="absolute -translate-x-1/2" style={{ left: `${(gb / SCALE_GB) * 100}%` }}>
+								<span
+									key={gb}
+									className="absolute -translate-x-1/2"
+									style={{ left: `${(gb / SCALE_GB) * 100}%` }}
+								>
 									{gb}
 								</span>
 							))}
 						</div>
-						<p className="mt-2 font-mono text-[10.5px] text-muted-foreground">70.6B params × 1 byte × 1.2 overhead</p>
+						<p className="mt-2 font-mono text-[10.5px] text-muted-foreground">
+							{precision
+								? "70.6B params × 1 byte × 1.2 overhead"
+								: "weights × bytes per param × 1.2 overhead"}
+						</p>
 					</div>
 				</div>
 			</div>
@@ -110,7 +133,7 @@ export function SceneLlm({ t }: { t: number }) {
 						</span>
 					}
 				>
-					GPU plans ≥ {NEED_GB} GB
+					GPU plans{precision ? ` ≥ ${NEED_GB} GB` : ""}
 				</PanelTitle>
 				<ul className="space-y-1.5 px-4 py-3">
 					{plans.map((p, i) => (
@@ -119,31 +142,49 @@ export function SceneLlm({ t }: { t: number }) {
 							key={p.id}
 							initial={false}
 							animate={{ opacity: t >= 2_500 + i * 120 ? 1 : 0 }}
-							transition={{ layout: { duration: 0.5, ease: [0.22, 1, 0.36, 1] }, opacity: { duration: 0.3 } }}
+							transition={{
+								layout: { duration: 0.5, ease: [0.22, 1, 0.36, 1] },
+								opacity: { duration: 0.3 },
+							}}
 							className={cn(
 								"flex items-center justify-between gap-3 border bg-card px-3 py-2 font-mono text-[11px]",
 								ranked && i === 0 && "border-signal/60 bg-signal/[0.07]",
 							)}
 						>
-							<span className="min-w-0 truncate text-foreground">{p.label}</span>
-							<span className="shrink-0 text-muted-foreground tabular">
-								{p.vram} GB · <span className={cn(ranked && i === 0 && "text-signal")}>${p.price.toFixed(2)}/h</span>
+							<span className="min-w-0 truncate text-foreground">
+								{p.label}
+							</span>
+							<span className="tabular shrink-0 text-muted-foreground">
+								{p.vram} GB ·{" "}
+								<span className={cn(ranked && i === 0 && "text-signal")}>
+									${p.price.toFixed(2)}/h
+								</span>
 							</span>
 						</motion.li>
 					))}
 				</ul>
 				<div className="mt-auto space-y-1 border-t px-4 py-3 font-mono text-[11px] leading-relaxed">
 					<Appear show={t >= 4_200}>
-						<ToolLine name="switchyard.create_server" args="{ min_vram_gb: 85 }" pending={t < 5_000} />
+						<ToolLine
+							name="switchyard.create_server"
+							args="{ min_vram_gb: 85 }"
+							pending={t < 5_000}
+						/>
 					</Appear>
 					<Appear show={t >= 5_000}>
-						<OutLine>routed → lambda:gpu_1x_gh200 · Virginia, US · $1.49/h</OutLine>
+						<OutLine>
+							routed → lambda:gpu_1x_gh200 · Virginia, US · $1.49/h
+						</OutLine>
 					</Appear>
 					<Appear show={t >= 6_200}>
-						<OutLine tone="go">running · ubuntu-22.04-cuda · 1× GH200 96 GB</OutLine>
+						<OutLine tone="go">
+							running · ubuntu-22.04-cuda · 1× GH200 96 GB
+						</OutLine>
 					</Appear>
 					<Appear show={t >= 7_200}>
-						<OutLine>vllm serve Llama-3.3-70B-Instruct · listening on :8000</OutLine>
+						<OutLine>
+							vllm serve Llama-3.3-70B-Instruct · listening on :8000
+						</OutLine>
 					</Appear>
 				</div>
 			</div>

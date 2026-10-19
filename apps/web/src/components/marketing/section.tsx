@@ -1,6 +1,8 @@
 import { cn } from "@switchyard/ui/lib/utils";
-import { animate, motion, useInView } from "motion/react";
+import { animate, motion, useInView, useReducedMotion } from "motion/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+
+import { formatUsd } from "@/lib/format";
 
 export function SectionLabel({
 	index,
@@ -35,13 +37,22 @@ export function SectionIntro({
 	children?: ReactNode;
 }) {
 	return (
-		<Reveal className={cn("flex flex-col justify-between gap-6 md:flex-row md:items-end", className)}>
+		<Reveal
+			className={cn(
+				"flex flex-col justify-between gap-6 md:flex-row md:items-end",
+				className,
+			)}
+		>
 			<div>
 				<SectionLabel index={index} label={label} />
 				<h2 className="mt-4 max-w-2xl text-balance font-medium text-3xl tracking-tight sm:text-[2.15rem]">
 					{title}
 				</h2>
-				{lede && <p className="mt-3 max-w-xl text-muted-foreground text-sm leading-relaxed">{lede}</p>}
+				{lede && (
+					<p className="mt-3 max-w-xl text-muted-foreground text-sm leading-relaxed">
+						{lede}
+					</p>
+				)}
 			</div>
 			{children}
 		</Reveal>
@@ -102,3 +113,19 @@ export function CountUp({
 		</span>
 	);
 }
+
+/**
+ * `useReducedMotion`, but false until mounted, so the server render and the
+ * first client render agree (the server can't know the user's preference).
+ */
+export function useReducedMotionSafe(): boolean {
+	const reduce = useReducedMotion();
+	const [mounted, setMounted] = useState(false);
+	useEffect(() => setMounted(true), []);
+	return mounted && Boolean(reduce);
+}
+
+/** An hourly price: four decimals below a dollar, two above. */
+export const hourlyPrice = (micros: number) =>
+	formatUsd(micros, { precise: micros < 1_000_000 });
+export const hourly = (micros: number) => `${hourlyPrice(micros)}/h`;

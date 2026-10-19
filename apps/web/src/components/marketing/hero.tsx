@@ -16,7 +16,10 @@ export function Hero() {
 	const regions = data?.reduce((n, p) => n + p.regions, 0) ?? 0;
 	const plans = data?.reduce((n, p) => n + p.plans, 0) ?? 0;
 	const from = data?.reduce<number | null>(
-		(min, p) => (p.fromHourlyMicros !== null && (min === null || p.fromHourlyMicros < min) ? p.fromHourlyMicros : min),
+		(min, p) =>
+			p.fromHourlyMicros !== null && (min === null || p.fromHourlyMicros < min)
+				? p.fromHourlyMicros
+				: min,
 		null,
 	);
 
@@ -38,21 +41,31 @@ export function Hero() {
 					Give your agent a server room.
 				</h1>
 				<p className="mx-auto mt-6 max-w-2xl text-balance text-base text-muted-foreground leading-relaxed sm:text-lg">
-					One MCP endpoint and one prepaid balance for 17 clouds — Hetzner, DigitalOcean and Vultr to GPU clouds
-					like RunPod and Lambda. Your agent says what it needs; Switchyard finds the cheapest machine that fits,
-					bills it by the minute, and tears it down when the job is done.
+					One MCP endpoint and one prepaid balance for 17 clouds — Hetzner,
+					DigitalOcean and Vultr to GPU clouds like RunPod and Lambda. Your
+					agent says what it needs; Switchyard finds the cheapest machine that
+					fits, bills it by the minute, and tears it down when the job is done.
 				</p>
 				<div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-					<Link to="/signup" className={buttonVariants({ variant: "signal", size: "xl" })}>
+					<Link
+						to="/signup"
+						className={buttonVariants({ variant: "signal", size: "xl" })}
+					>
 						Get started <ArrowRightIcon />
 					</Link>
-					<Link to="/catalog" className={buttonVariants({ variant: "outline", size: "xl" })}>
+					<Link
+						to="/catalog"
+						className={buttonVariants({ variant: "outline", size: "xl" })}
+					>
 						Browse the catalog
 					</Link>
 				</div>
 				<dl className="mx-auto mt-12 grid max-w-xl grid-cols-2 gap-px border bg-border sm:grid-cols-4">
 					{stats.map((s) => (
-						<div key={s.label} className="bg-background/90 px-4 py-3 backdrop-blur-sm">
+						<div
+							key={s.label}
+							className="bg-background/90 px-4 py-3 backdrop-blur-sm"
+						>
 							<dt className="label-mono">{s.label}</dt>
 							<dd className="mt-1 font-medium text-2xl tracking-tight">
 								<CountUp value={s.value} />
@@ -61,7 +74,7 @@ export function Hero() {
 					))}
 					<div className="bg-background/90 px-4 py-3 backdrop-blur-sm">
 						<dt className="label-mono">from</dt>
-						<dd className="mt-1 font-medium text-2xl tabular tracking-tight">
+						<dd className="tabular mt-1 font-medium text-2xl tracking-tight">
 							{from ? formatUsd(from, { precise: true }) : "—"}
 							<span className="text-muted-foreground text-sm">/h</span>
 						</dd>

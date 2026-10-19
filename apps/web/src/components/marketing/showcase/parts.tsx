@@ -52,14 +52,22 @@ export function ToolLine({
 }) {
 	return (
 		<p className="truncate pt-1">
-			<span className={cn("text-signal", pending && "animate-pulse-dot")}>●</span>{" "}
+			<span className={cn("text-signal", pending && "animate-pulse-dot")}>
+				●
+			</span>{" "}
 			<span className="text-foreground">{name}</span>{" "}
 			{args && <span className="text-muted-foreground">{args}</span>}
 		</p>
 	);
 }
 
-export function OutLine({ children, tone }: { children: ReactNode; tone?: "go" | "muted" | "bad" }) {
+export function OutLine({
+	children,
+	tone,
+}: {
+	children: ReactNode;
+	tone?: "go" | "muted" | "bad";
+}) {
 	return (
 		<p
 			className={cn(
@@ -75,7 +83,13 @@ export function OutLine({ children, tone }: { children: ReactNode; tone?: "go" |
 	);
 }
 
-export function PanelTitle({ children, right }: { children: ReactNode; right?: ReactNode }) {
+export function PanelTitle({
+	children,
+	right,
+}: {
+	children: ReactNode;
+	right?: ReactNode;
+}) {
 	return (
 		<div className="flex items-center justify-between border-b px-4 py-2.5">
 			<span className="label-mono">{children}</span>

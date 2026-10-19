@@ -1,4 +1,11 @@
-import { BanIcon, CreditCardIcon, EyeIcon, KeyRoundIcon, LockIcon, ServerCogIcon } from "lucide-react";
+import {
+	BanIcon,
+	CreditCardIcon,
+	EyeIcon,
+	KeyRoundIcon,
+	LockIcon,
+	ServerCogIcon,
+} from "lucide-react";
 
 import { Reveal, SectionIntro } from "./section";
 
@@ -43,12 +50,21 @@ export function Guardrails() {
 				label="Guardrails"
 				title="Give an agent a card without giving it your card."
 			/>
-			<ul className="mt-12 grid gap-px border bg-border sm:grid-cols-2 lg:grid-cols-3">
+			<ul className="mt-12 grid grid-cols-1 gap-px border bg-border sm:grid-cols-2 lg:grid-cols-3">
 				{ITEMS.map(({ icon: Icon, title, body }, i) => (
-					<Reveal as="li" key={title} delay={(i % 3) * 0.06} className="bg-background p-6">
+					<Reveal
+						as="li"
+						key={title}
+						delay={(i % 3) * 0.06}
+						className="min-w-0 bg-background p-6"
+					>
 						<Icon className="size-4 text-signal" />
-						<h3 className="mt-4 font-medium text-[15px] tracking-tight">{title}</h3>
-						<p className="mt-2 text-muted-foreground text-sm leading-relaxed">{body}</p>
+						<h3 className="mt-4 font-medium text-[15px] tracking-tight">
+							{title}
+						</h3>
+						<p className="mt-2 text-muted-foreground text-sm leading-relaxed">
+							{body}
+						</p>
 					</Reveal>
 				))}
 			</ul>

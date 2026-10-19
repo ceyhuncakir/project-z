@@ -26,7 +26,9 @@ export const Route = createFileRoute("/")({
 			context.queryClient.prefetchQuery(providersQuery),
 			context.queryClient.prefetchQuery(llmModelsQuery),
 			context.queryClient.prefetchQuery(
-				orpc.catalog.sizeLlm.queryOptions({ input: { model: "llama-3.3-70b", precision: undefined } }),
+				orpc.catalog.sizeLlm.queryOptions({
+					input: { model: "llama-3.3-70b", precision: undefined },
+				}),
 			),
 			...BOARDS.map((b) => context.queryClient.prefetchQuery(b.query)),
 		]),

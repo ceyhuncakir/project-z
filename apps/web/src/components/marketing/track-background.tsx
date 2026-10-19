@@ -1,4 +1,4 @@
-import { motion, useReducedMotion } from "motion/react";
+import { motion } from "motion/react";
 
 /**
  * Rails that converge into a junction and fan back out — a switchyard seen
@@ -20,13 +20,12 @@ const TRAINS = [
 ];
 
 export function TrackBackground() {
-	const reduce = useReducedMotion();
 	return (
 		<svg
 			aria-hidden="true"
 			viewBox="0 0 1200 540"
 			preserveAspectRatio="xMidYMid slice"
-			className="pointer-events-none absolute inset-0 h-full w-full [mask-image:radial-gradient(ellipse_75%_70%_at_50%_45%,black_30%,transparent_100%)]"
+			className="pointer-events-none absolute inset-0 hidden h-full w-full [mask-image:radial-gradient(ellipse_38%_42%_at_50%_44%,transparent_45%,black_95%)] sm:block"
 		>
 			<g fill="none" stroke="var(--border)" strokeLinecap="round">
 				{tracks.map((d, i) => (
@@ -52,10 +51,15 @@ export function TrackBackground() {
 					</g>
 				))}
 			</g>
-			<circle cx="600" cy="270" r="5" fill="var(--background)" stroke="var(--border)" strokeWidth="1.5" />
-			{!reduce &&
-				TRAINS.map((t) => (
-					<circle key={`${t.track}-${t.begin}`} r="3" fill="var(--signal)" opacity="0.85">
+			{/* Hidden by CSS (not unmounted) under reduced motion, so SSR markup matches. */}
+			<g className="motion-reduce:hidden">
+				{TRAINS.map((t) => (
+					<circle
+						key={`${t.track}-${t.begin}`}
+						r="3"
+						fill="var(--signal)"
+						opacity="0.85"
+					>
 						<animateMotion
 							dur={`${t.dur}s`}
 							begin={`${t.begin}s`}
@@ -68,6 +72,7 @@ export function TrackBackground() {
 						/>
 					</circle>
 				))}
+			</g>
 		</svg>
 	);
 }

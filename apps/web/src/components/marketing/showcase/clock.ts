@@ -52,7 +52,8 @@ export function useSceneClock(
 export const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 
 /** 0→1 over [start, start + length]. */
-export const phase = (t: number, start: number, length: number) => clamp01((t - start) / length);
+export const phase = (t: number, start: number, length: number) =>
+	clamp01((t - start) / length);
 
 /** Characters of `text` revealed by `t`, typing from `start` at `cps` chars/sec. */
 export const typed = (text: string, t: number, start: number, cps = 45) =>
