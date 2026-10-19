@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { PROVIDER_IMAGES } from "../images";
+import { providerImage } from "../images";
 import { referencePlans, referenceRegions } from "../reference-catalog";
 import {
 	type Continent,
@@ -347,7 +347,7 @@ export function createOvhAdapter(
 						{ retryable: true },
 					);
 				}
-				const imageName = PROVIDER_IMAGES.ovhcloud[input.image];
+				const imageName = providerImage("ovhcloud", input.image);
 				const matches = images.filter(
 					(i) => i.name === imageName && (i.status ?? "active") === "active",
 				);

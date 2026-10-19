@@ -8,7 +8,7 @@ import { createMcpServer } from "@switchyard/api/mcp";
 import { appRouter } from "@switchyard/api/routers/index";
 import { verifyApiKey } from "@switchyard/api/services/api-keys";
 import { startJobs } from "@switchyard/api/services/jobs";
-import { handlePolarWebhook } from "@switchyard/api/services/payments";
+import { handleStripeWebhook } from "@switchyard/api/services/payments";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
@@ -77,12 +77,13 @@ app.all("/mcp", async (c) => {
 	return transport.handleRequest(c.req.raw);
 });
 
-app.post("/webhooks/polar", async (c) => {
-	if (!services.config.polar) return c.text("payments disabled", 404);
-	const result = await handlePolarWebhook(
+// Stripe needs the raw body to verify the signature.
+app.post("/webhooks/stripe", async (c) => {
+	if (!services.config.stripe) return c.text("payments disabled", 404);
+	const result = await handleStripeWebhook(
 		services,
 		await c.req.text(),
-		c.req.header(),
+		c.req.header("stripe-signature"),
 	);
 	return c.json(result, result.status);
 });

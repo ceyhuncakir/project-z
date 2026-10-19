@@ -255,6 +255,11 @@ function ServerPage() {
 						<Row label="Resources">
 							{s.vcpu} vCPU · {s.memoryGb} GB RAM · {s.diskGb} GB disk
 						</Row>
+						{s.gpu && (
+							<Row label="GPU">
+								<span className="text-signal">{s.gpu}</span>
+							</Row>
+						)}
 						<Row label="Image">{s.image}</Row>
 						<Row label="Region">
 							<span className="font-mono text-[12px]">{s.regionId}</span>

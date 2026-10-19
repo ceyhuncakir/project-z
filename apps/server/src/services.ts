@@ -1,9 +1,9 @@
-import { Polar } from "@polar-sh/sdk";
 import type { AppConfig, Services } from "@switchyard/api/context";
 import { ensureWallet } from "@switchyard/api/services/wallet";
 import { createAuth } from "@switchyard/auth";
 import { createCloud } from "@switchyard/cloud";
 import { createDb } from "@switchyard/db";
+import Stripe from "stripe";
 
 import { ENV } from "./env.server";
 
@@ -48,17 +48,16 @@ const config: AppConfig = {
 	apiUrl: ENV.BETTER_AUTH_URL.replace(/\/$/, ""),
 	allowTestCredits: ENV.ALLOW_TEST_CREDITS && ENV.NODE_ENV !== "production",
 	githubAuth: Boolean(ENV.GITHUB_CLIENT_ID && ENV.GITHUB_CLIENT_SECRET),
-	polar:
-		ENV.POLAR_ACCESS_TOKEN && ENV.POLAR_CREDITS_PRODUCT_ID
-			? {
-					client: new Polar({
-						accessToken: ENV.POLAR_ACCESS_TOKEN,
-						server: ENV.POLAR_SERVER,
-					}),
-					productId: ENV.POLAR_CREDITS_PRODUCT_ID,
-					webhookSecret: ENV.POLAR_WEBHOOK_SECRET ?? null,
-				}
-			: null,
+	stripe: ENV.STRIPE_SECRET_KEY
+		? {
+				client: new Stripe(ENV.STRIPE_SECRET_KEY, {
+					// fetch works the same on Bun, Node and edge runtimes.
+					httpClient: Stripe.createFetchHttpClient(),
+					appInfo: { name: "switchyard" },
+				}),
+				webhookSecret: ENV.STRIPE_WEBHOOK_SECRET ?? null,
+			}
+		: null,
 };
 
 export const services: Services = { db, cloud, config };

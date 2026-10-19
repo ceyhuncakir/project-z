@@ -25,9 +25,27 @@ export const planFiltersSchema = z.object({
 	maxMonthlyUsd: z.number().positive().optional(),
 	cpuType: z.enum(["shared", "dedicated"]).optional(),
 	arch: z.enum(["x86", "arm"]).optional(),
+	/**
+	 * `cpu` (default): CPU-only plans. `gpu`: GPU plans only. `any`: both.
+	 * Any GPU filter below implies `gpu`.
+	 */
+	kind: z.enum(["cpu", "gpu", "any"]).optional(),
+	/** Case-insensitive substring match on the GPU model, e.g. "H100". */
+	gpuModels: z.array(z.string().min(1)).optional(),
+	minGpuCount: z.number().int().positive().optional(),
+	/** Total GPU memory across all GPUs, GB. */
+	minVramGb: z.number().positive().optional(),
 });
 
 export type PlanFilters = z.infer<typeof planFiltersSchema>;
+
+export const totalVramGb = (plan: Plan) =>
+	plan.gpu ? plan.gpu.count * plan.gpu.vramGb : 0;
+
+function resolveKind(f: PlanFilters): "cpu" | "gpu" | "any" {
+	if (f.kind) return f.kind;
+	return f.gpuModels?.length || f.minGpuCount || f.minVramGb ? "gpu" : "cpu";
+}
 
 export type PlanSort = "price" | "vcpu" | "memory";
 
@@ -149,10 +167,24 @@ export function matchPlans(
 			? undefined
 			: filters.maxMonthlyUsd * 1e6;
 
+	const kind = resolveKind(filters);
+	const gpuModels = filters.gpuModels?.map((m) =>
+		m.toLowerCase().replace(/\s+/g, ""),
+	);
+
 	const out: PlanMatch[] = [];
 	for (const plan of snapshot.plans) {
 		if (filters.providers?.length && !filters.providers.includes(plan.provider))
 			continue;
+		if (kind === "cpu" && plan.gpu) continue;
+		if (kind === "gpu" && !plan.gpu) continue;
+		if (gpuModels?.length) {
+			const model = plan.gpu?.model.toLowerCase().replace(/\s+/g, "") ?? "";
+			if (!gpuModels.some((m) => model.includes(m))) continue;
+		}
+		if (filters.minGpuCount && (plan.gpu?.count ?? 0) < filters.minGpuCount)
+			continue;
+		if (filters.minVramGb && totalVramGb(plan) < filters.minVramGb) continue;
 		if (filters.minVcpu && plan.vcpu < filters.minVcpu) continue;
 		if (filters.minMemoryGb && plan.memoryGb < filters.minMemoryGb) continue;
 		if (filters.minDiskGb && plan.diskGb < filters.minDiskGb) continue;

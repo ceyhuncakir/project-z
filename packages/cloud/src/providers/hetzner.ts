@@ -1,5 +1,5 @@
 import { createJsonClient } from "../http";
-import { PROVIDER_IMAGES } from "../images";
+import { providerImage } from "../images";
 import {
 	type Continent,
 	type CreateServerInput,
@@ -136,7 +136,7 @@ export function createHetznerAdapter(
 				name,
 				server_type: input.planSlug,
 				location: input.regionSlug,
-				image: PROVIDER_IMAGES.hetzner[input.image],
+				image: providerImage("hetzner", input.image),
 				// SSH keys travel in cloud-init: Hetzner `ssh_keys` live in the project, shared by every tenant.
 				user_data: input.userData,
 				labels: {

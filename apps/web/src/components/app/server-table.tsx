@@ -64,7 +64,7 @@ export function ServerTable({
 								{s.name}
 							</Link>
 							<p className="font-mono text-[10.5px] text-muted-foreground">
-								{s.planName} · {s.vcpu} vCPU · {s.memoryGb} GB
+								{s.planName} · {s.gpu ?? `${s.vcpu} vCPU · ${s.memoryGb} GB`}
 							</p>
 						</TableCell>
 						<TableCell>

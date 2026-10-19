@@ -6,7 +6,8 @@
  * when billing per minute.
  */
 
-export const PROVIDER_IDS = [
+/** Providers with a live API adapter. */
+export const LIVE_PROVIDER_IDS = [
 	"hetzner",
 	"digitalocean",
 	"vultr",
@@ -15,6 +16,27 @@ export const PROVIDER_IDS = [
 	"scaleway",
 ] as const;
 
+/** Providers that are simulated only, until their live adapters land. */
+export const PREVIEW_PROVIDER_IDS = [
+	"upcloud",
+	"contabo",
+	"civo",
+	"exoscale",
+	"runpod",
+	"lambda",
+	"vastai",
+	"coreweave",
+	"paperspace",
+	"nebius",
+	"hyperstack",
+] as const;
+
+export const PROVIDER_IDS = [
+	...LIVE_PROVIDER_IDS,
+	...PREVIEW_PROVIDER_IDS,
+] as const;
+
+export type LiveProviderId = (typeof LIVE_PROVIDER_IDS)[number];
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 
 export const CONTINENTS = ["EU", "NA", "SA", "AS", "OC", "AF"] as const;
@@ -25,10 +47,16 @@ export type Arch = "x86" | "arm";
 
 export type AdapterMode = "live" | "sandbox";
 
+/** `cloud`: general-purpose VPS. `gpu`: GPU clouds for training and LLM hosting. */
+export type ProviderCategory = "cloud" | "gpu";
+
 export interface ProviderInfo {
 	id: ProviderId;
 	name: string;
 	website: string;
+	category: ProviderCategory;
+	/** Simulated only: no live adapter exists yet. */
+	preview: boolean;
 	/** "live" when platform credentials are configured, otherwise "sandbox". */
 	mode: AdapterMode;
 }
@@ -69,6 +97,16 @@ export interface Plan {
 		string,
 		{ hourlyMicros: number; monthlyMicros: number }
 	>;
+	/** Attached accelerators. Absent on CPU-only plans. */
+	gpu?: GpuSpec;
+}
+
+export interface GpuSpec {
+	/** Marketing name, e.g. "H100 SXM". */
+	model: string;
+	count: number;
+	/** Memory per GPU, GB. */
+	vramGb: number;
 }
 
 export const IMAGE_IDS = [
@@ -76,6 +114,7 @@ export const IMAGE_IDS = [
 	"ubuntu-22.04",
 	"debian-12",
 	"rocky-9",
+	"ubuntu-22.04-cuda",
 ] as const;
 export type ImageId = (typeof IMAGE_IDS)[number];
 
@@ -83,6 +122,8 @@ export interface Image {
 	id: ImageId;
 	name: string;
 	family: "ubuntu" | "debian" | "rocky";
+	/** Ships NVIDIA drivers + CUDA; only valid on GPU plans. */
+	gpu?: boolean;
 }
 
 export type ProviderServerStatus =

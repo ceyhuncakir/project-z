@@ -19,6 +19,7 @@ const TOC = [
 	["quickstart", "Quickstart"],
 	["tools", "MCP tools"],
 	["routing", "Routing & fallback"],
+	["gpu", "GPUs & LLM hosting"],
 	["access", "Server access"],
 	["billing", "Billing"],
 	["safety", "Budgets & safety"],
@@ -52,6 +53,11 @@ const TOOLS: [string, string, string][] = [
 	],
 	["list_providers", "Providers with plan counts and starting price.", "—"],
 	["list_images", "OS images available everywhere.", "—"],
+	[
+		"size_llm",
+		"VRAM needed for an open-weight model + cheapest GPU plans that fit.",
+		"model | params_b, precision",
+	],
 ];
 
 function Section({
@@ -210,6 +216,51 @@ function DocsPage() {
 						</p>
 					</Section>
 
+					<Section id="gpu" title="GPUs & LLM hosting">
+						<p>
+							GPU clouds — RunPod, Lambda, Vast.ai, CoreWeave, Paperspace,
+							Nebius and Hyperstack — sit in the same catalog. Searches return
+							CPU plans unless you ask for GPUs with{" "}
+							<code className="font-mono text-[13px] text-foreground">
+								kind: "gpu"
+							</code>
+							,{" "}
+							<code className="font-mono text-[13px] text-foreground">
+								min_vram_gb
+							</code>
+							,{" "}
+							<code className="font-mono text-[13px] text-foreground">
+								gpu_models
+							</code>{" "}
+							or{" "}
+							<code className="font-mono text-[13px] text-foreground">
+								min_gpu_count
+							</code>
+							. GPU servers boot Ubuntu 22.04 with NVIDIA drivers and CUDA 12 by
+							default.
+						</p>
+						<p>
+							Not sure what a model needs? <strong>size_llm</strong> estimates
+							VRAM as weights × 1.2 (room for KV cache at moderate context) and
+							lists the cheapest plans that fit. GPU clouds are in{" "}
+							<strong>preview</strong>: they are simulated with indicative
+							prices until their live integrations ship.
+						</p>
+						<CodeBlock
+							compact
+							tabs={[
+								{
+									label: "size_llm",
+									code: `{ "model": "llama-3.3-70b", "precision": "int8" }\n\n→ vram_needed_gb: 85, cheapest_fits: [lambda:gpu_1x_gh200, …]`,
+								},
+								{
+									label: "create_server",
+									code: `{\n  "min_vram_gb": 85,\n  "continents": ["NA"],\n  "wait_for_running_seconds": 90\n}`,
+								},
+							]}
+						/>
+					</Section>
+
 					<Section id="billing" title="Billing">
 						<p>
 							Hourly prices are the providers' list prices, passed through.
@@ -217,6 +268,14 @@ function DocsPage() {
 							with a <strong>one-hour minimum</strong> per server. Stopped
 							servers still bill (providers keep the disk reserved) — delete to
 							stop billing. Credits carry a 5% top-up fee (minimum $0.50).
+						</p>
+						<p>
+							Top-ups are paid through <strong>Stripe Checkout</strong>; the fee
+							shows as its own line item and Stripe emails a receipt. Save the
+							card at checkout to turn on <strong>auto top-up</strong>: when the
+							balance drops below your threshold, the card is charged
+							off-session so servers never get suspended mid-job. Refunds remove
+							the matching credit.
 						</p>
 					</Section>
 

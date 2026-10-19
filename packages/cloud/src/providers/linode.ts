@@ -1,5 +1,5 @@
 import { createJsonClient } from "../http";
-import { PROVIDER_IMAGES } from "../images";
+import { providerImage } from "../images";
 import { referenceRegions } from "../reference-catalog";
 import type {
 	Plan,
@@ -202,7 +202,7 @@ export function createLinodeAdapter(
 						label: label(input.serverId),
 						region: input.regionSlug,
 						type: input.planSlug,
-						image: PROVIDER_IMAGES.linode[input.image],
+						image: providerImage("linode", input.image),
 						// Required with an image; random and never stored. Password SSH is disabled by cloud-init.
 						root_pass: randomPassword(),
 						authorized_keys: input.sshPublicKeys,

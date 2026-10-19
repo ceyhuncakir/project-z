@@ -1,3 +1,8 @@
+import {
+	estimateVramGb,
+	LLM_PRECISIONS,
+	type LlmPrecision,
+} from "@switchyard/cloud/llm";
 import { Button } from "@switchyard/ui/components/button";
 import { Checkbox } from "@switchyard/ui/components/checkbox";
 import {
@@ -19,7 +24,6 @@ import { DownloadIcon, ShuffleIcon, TableIcon } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
-
 import { PageHeader, Panel, useOverview } from "@/components/app/app-shell";
 import {
 	CatalogFilters,
@@ -41,6 +45,8 @@ export const Route = createFileRoute("/_app/servers/new")({
 type Mode = "auto" | "plan";
 
 interface Requirements {
+	workload: "cpu" | "gpu";
+	minVramGb?: number;
 	minVcpu?: number;
 	minMemoryGb?: number;
 	minDiskGb?: number;
@@ -72,6 +78,8 @@ function NewServerPage() {
 	const navigate = useNavigate();
 	const [mode, setMode] = useState<Mode>(initialPlanId ? "plan" : "auto");
 	const [req, setReq] = useState<Requirements>({
+		workload: "cpu",
+		minVramGb: 24,
 		minVcpu: 2,
 		minMemoryGb: 4,
 		continents: [],
@@ -81,7 +89,12 @@ function NewServerPage() {
 	);
 	const [planId, setPlanId] = useState<string | undefined>(initialPlanId);
 	const [regionId, setRegionId] = useState<string>("");
-	const [image, setImage] = useState("ubuntu-24.04");
+	/** null = the default for the plan type (CUDA image on GPU plans). */
+	const [image, setImage] = useState<string | null>(null);
+	const [llm, setLlm] = useState<{ id: string; precision: LlmPrecision | "" }>({
+		id: "",
+		precision: "",
+	});
 	const [name, setName] = useState("");
 	const [selectedKeys, setSelectedKeys] = useState<string[] | null>(null);
 	const [pastedKey, setPastedKey] = useState("");
@@ -94,13 +107,17 @@ function NewServerPage() {
 	const overview = useOverview();
 	const savedKeys = useQuery(orpc.sshKeys.list.queryOptions());
 	const images = useQuery(orpc.catalog.images.queryOptions());
+	const llmModels = useQuery(orpc.catalog.llmModels.queryOptions());
 
+	const gpuAuto = req.workload === "gpu";
 	const autoFilters = {
-		minVcpu: req.minVcpu,
-		minMemoryGb: req.minMemoryGb,
+		kind: req.workload,
+		minVcpu: gpuAuto ? undefined : req.minVcpu,
+		minMemoryGb: gpuAuto ? undefined : req.minMemoryGb,
 		minDiskGb: req.minDiskGb,
+		minVramGb: gpuAuto ? req.minVramGb : undefined,
 		maxHourlyUsd: req.maxHourlyUsd,
-		cpuType: req.cpuType,
+		cpuType: gpuAuto ? undefined : req.cpuType,
 		continents: req.continents.length
 			? (req.continents as CatalogSearch["continents"])
 			: undefined,
@@ -158,6 +175,9 @@ function NewServerPage() {
 	);
 
 	const estimate = mode === "auto" ? preview.data?.[0] : selected;
+	const isGpu = mode === "auto" ? gpuAuto : Boolean(selected?.gpu);
+	const effectiveImage =
+		image ?? (isGpu ? "ubuntu-22.04-cuda" : "ubuntu-24.04");
 	const balance = overview.data?.balanceMicros ?? 0;
 	const affordable = estimate ? balance >= estimate.priceHourlyMicros : true;
 	const canSubmit =
@@ -168,7 +188,7 @@ function NewServerPage() {
 		const keys = pastedKey.trim() ? [pastedKey.trim()] : undefined;
 		create.mutate({
 			name: name.trim() || undefined,
-			image: image as "ubuntu-24.04",
+			image: effectiveImage as "ubuntu-24.04",
 			planId: mode === "plan" ? planId : undefined,
 			regionId: mode === "plan" ? regionId || undefined : undefined,
 			requirements: mode === "auto" ? autoFilters : undefined,
@@ -179,6 +199,17 @@ function NewServerPage() {
 	}
 
 	const num = (v: string) => (v === "" ? undefined : Number(v));
+
+	function sizeFor(id: string, precision: LlmPrecision | "") {
+		setLlm({ id, precision });
+		const model = llmModels.data?.find((m) => m.id === id);
+		if (model) {
+			setReq({
+				...req,
+				minVramGb: estimateVramGb(model.paramsB, precision || model.precision),
+			});
+		}
+	}
 
 	return (
 		<>
@@ -234,8 +265,106 @@ function NewServerPage() {
 					</div>
 
 					{mode === "auto" ? (
-						<Panel title="Requirements">
-							<div className="grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4">
+						<Panel
+							title="Requirements"
+							actions={
+								<fieldset className="inline-flex border">
+									<legend className="sr-only">Workload</legend>
+									{(
+										[
+											["cpu", "General compute"],
+											["gpu", "GPU / LLM"],
+										] as const
+									).map(([id, label]) => (
+										<button
+											key={id}
+											type="button"
+											aria-pressed={req.workload === id}
+											onClick={() => setReq({ ...req, workload: id })}
+											className={cn(
+												"h-7 px-3 font-mono text-[11px] transition-colors",
+												req.workload === id
+													? "bg-foreground text-background"
+													: "text-muted-foreground hover:text-foreground",
+											)}
+										>
+											{label}
+										</button>
+									))}
+								</fieldset>
+							}
+						>
+							{gpuAuto && (
+								<div className="grid gap-4 border-b p-4 sm:grid-cols-[1fr_10rem_10rem]">
+									<Field
+										label="Size for a model"
+										hint="Weights × 1.2 for KV cache. Pick a preset or set VRAM yourself."
+									>
+										<div className="flex gap-2">
+											<NativeSelect
+												aria-label="Model preset"
+												className="flex-1"
+												value={llm.id}
+												onChange={(e) => sizeFor(e.target.value, llm.precision)}
+											>
+												<option value="">Choose a model…</option>
+												{llmModels.data?.map((m) => (
+													<option key={m.id} value={m.id}>
+														{m.name} · {m.paramsB}B
+													</option>
+												))}
+											</NativeSelect>
+											<NativeSelect
+												aria-label="Precision"
+												className="w-32"
+												value={llm.precision}
+												disabled={!llm.id}
+												onChange={(e) =>
+													sizeFor(llm.id, e.target.value as LlmPrecision | "")
+												}
+											>
+												<option value="">Native</option>
+												{(Object.keys(LLM_PRECISIONS) as LlmPrecision[]).map(
+													(p) => (
+														<option key={p} value={p}>
+															{p}
+														</option>
+													),
+												)}
+											</NativeSelect>
+										</div>
+									</Field>
+									<Field label="Min VRAM (GB)">
+										<Input
+											type="number"
+											min={8}
+											value={req.minVramGb ?? ""}
+											onChange={(e) => {
+												setLlm({ id: "", precision: "" });
+												setReq({ ...req, minVramGb: num(e.target.value) });
+											}}
+										/>
+									</Field>
+									<Field label="Max $ / hour">
+										<Input
+											type="number"
+											min={0}
+											step={0.01}
+											placeholder="no limit"
+											value={req.maxHourlyUsd ?? ""}
+											onChange={(e) =>
+												setReq({ ...req, maxHourlyUsd: num(e.target.value) })
+											}
+										/>
+									</Field>
+								</div>
+							)}
+							<div
+								className={cn(
+									"grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4",
+									gpuAuto && "hidden",
+								)}
+							>
 								<Field label="Min vCPU">
 									<Input
 										type="number"
@@ -309,7 +438,7 @@ function NewServerPage() {
 									);
 								})}
 								<NativeSelect
-									className="ml-auto w-40"
+									className={cn("ml-auto w-40", gpuAuto && "hidden")}
 									aria-label="CPU type"
 									value={req.cpuType ?? ""}
 									onChange={(e) =>
@@ -344,8 +473,11 @@ function NewServerPage() {
 											<span className="min-w-0 truncate">
 												<span className="font-medium">{p.providerName}</span>{" "}
 												<span className="text-muted-foreground">
-													{p.name} · {p.vcpu} vCPU · {p.memoryGb} GB ·{" "}
-													{flag(p.regions[0]?.country ?? "")}{" "}
+													{p.name} ·{" "}
+													{p.gpu
+														? `${p.gpu.count}× ${p.gpu.model} · ${p.gpu.totalVramGb} GB VRAM`
+														: `${p.vcpu} vCPU · ${p.memoryGb} GB`}{" "}
+													· {flag(p.regions[0]?.country ?? "")}{" "}
 													{p.regions[0]?.city}
 												</span>
 											</span>
@@ -399,26 +531,33 @@ function NewServerPage() {
 					)}
 
 					<Panel title="System">
-						<div className="grid gap-px bg-border sm:grid-cols-4">
-							{images.data?.map((img) => (
-								<button
-									key={img.id}
-									type="button"
-									onClick={() => setImage(img.id)}
-									className={cn(
-										"bg-card p-3 text-left transition-colors hover:bg-muted/40",
-										image === img.id &&
-											"bg-background shadow-[inset_0_-2px_0_0_var(--signal)]",
-									)}
-								>
-									<span className="block font-medium text-[13px]">
-										{img.name}
-									</span>
-									<span className="font-mono text-[10.5px] text-muted-foreground">
-										{img.id}
-									</span>
-								</button>
-							))}
+						<div
+							className={cn(
+								"grid gap-px bg-border",
+								isGpu ? "sm:grid-cols-5" : "sm:grid-cols-4",
+							)}
+						>
+							{images.data
+								?.filter((img) => isGpu || !img.gpu)
+								.map((img) => (
+									<button
+										key={img.id}
+										type="button"
+										onClick={() => setImage(img.id)}
+										className={cn(
+											"bg-card p-3 text-left transition-colors hover:bg-muted/40",
+											effectiveImage === img.id &&
+												"bg-background shadow-[inset_0_-2px_0_0_var(--signal)]",
+										)}
+									>
+										<span className="block font-medium text-[13px]">
+											{img.name}
+										</span>
+										<span className="font-mono text-[10.5px] text-muted-foreground">
+											{img.id}
+										</span>
+									</button>
+								))}
 						</div>
 						<div className="grid gap-4 border-t p-4 sm:grid-cols-2">
 							<Field label="Name" hint="Optional. Letters, digits and dashes.">

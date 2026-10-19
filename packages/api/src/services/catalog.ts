@@ -1,5 +1,7 @@
 import {
 	IMAGES,
+	LLM_MODELS,
+	type LlmSizingInput,
 	matchPlans,
 	matchPrice,
 	type PlanFilters,
@@ -9,7 +11,9 @@ import {
 	planFiltersSchema,
 	priceIn,
 	rankCandidates,
+	resolveLlm,
 	sortMatches,
+	totalVramGb,
 } from "@switchyard/cloud";
 import { z } from "zod";
 
@@ -28,6 +32,8 @@ function serializeMatch(match: PlanMatch) {
 		id: plan.id,
 		provider: plan.provider,
 		providerName: PROVIDERS[plan.provider].name,
+		/** Simulated provider without a live integration yet. */
+		preview: PROVIDERS[plan.provider].preview,
 		name: plan.name,
 		vcpu: plan.vcpu,
 		memoryGb: plan.memoryGb,
@@ -35,6 +41,7 @@ function serializeMatch(match: PlanMatch) {
 		transferTb: plan.transferTb,
 		cpuType: plan.cpuType,
 		arch: plan.arch,
+		gpu: plan.gpu ? { ...plan.gpu, totalVramGb: totalVramGb(plan) } : null,
 		priceHourlyMicros: from.hourlyMicros,
 		priceMonthlyMicros: from.monthlyMicros,
 		regions: regions.map((r) => ({
@@ -107,3 +114,17 @@ export async function previewRoute(svc: Services, filters: PlanFilters) {
 		serializeMatch({ plan, regions: [region] }),
 	);
 }
+
+/** VRAM needed to serve a model, and the cheapest GPU plans that fit it. */
+export async function sizeLlm(svc: Services, input: LlmSizingInput, limit = 5) {
+	const need = resolveLlm(input);
+	const { plans } = await searchPlans(svc, {
+		filters: { kind: "gpu", minVramGb: need.vramGb },
+		sort: "price",
+		limit,
+	});
+	return { ...need, plans };
+}
+
+export const listLlmModels = () =>
+	LLM_MODELS.map((m) => ({ ...m, vramGb: resolveLlm({ model: m.id }).vramGb }));

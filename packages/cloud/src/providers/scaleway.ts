@@ -1,5 +1,5 @@
 import { createJsonClient } from "../http";
-import { PROVIDER_IMAGES } from "../images";
+import { providerImage } from "../images";
 import {
 	type Arch,
 	type Plan,
@@ -350,7 +350,7 @@ export function createScalewayAdapter(
 				const image = await pickImage(
 					zone,
 					type,
-					PROVIDER_IMAGES.scaleway[input.image],
+					providerImage("scaleway", input.image),
 				);
 				const local = image.type === "instance_local";
 				// No IAM/project SSH keys: they are shared by every tenant; cloud-init carries the keys.

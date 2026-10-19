@@ -6,22 +6,17 @@ import {
 	expect,
 	test,
 } from "bun:test";
-import path from "node:path";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createCloud } from "@switchyard/cloud";
-import { createDb } from "@switchyard/db";
 import {
 	apiKey,
 	creditTransaction,
 	server,
 	wallet,
 } from "@switchyard/db/schema/app";
-import { user } from "@switchyard/db/schema/auth";
-import { eq, sql } from "drizzle-orm";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { Client as PgClient } from "pg";
+import { eq } from "drizzle-orm";
 
 import type { Actor, Services } from "./context";
 import { createMcpServer } from "./mcp";
@@ -30,12 +25,14 @@ import { meterUsage } from "./services/billing";
 import { enforceBalances } from "./services/jobs";
 import { createServer, deleteServer, getServer } from "./services/servers";
 import { addCredits, getBalance, quoteTopup } from "./services/wallet";
+import {
+	createTestDb,
+	prepareDatabase,
+	resetDatabase,
+	TEST_USER,
+} from "./testing";
 
-const TEST_URL =
-	process.env.TEST_DATABASE_URL ??
-	"postgresql://postgres:password@localhost:5432/switchyard_test";
-
-const db = createDb({ DATABASE_URL: TEST_URL });
+const db = createTestDb();
 const svc: Services = {
 	db,
 	// Hetzner's cheapest EU plan is "sold out" so the router has to fall back.
@@ -48,39 +45,15 @@ const svc: Services = {
 		apiUrl: "http://api.test",
 		allowTestCredits: true,
 		githubAuth: false,
-		polar: null,
+		stripe: null,
 	},
 };
 
-const USER = "user_test";
+const USER = TEST_USER;
 const actor: Actor = { userId: USER, apiKeyId: null, via: "dashboard" };
 
-beforeAll(async () => {
-	const url = new URL(TEST_URL);
-	const dbName = url.pathname.slice(1);
-	url.pathname = "/postgres";
-	const admin = new PgClient({ connectionString: url.toString() });
-	await admin.connect();
-	const exists = await admin.query(
-		"select 1 from pg_database where datname = $1",
-		[dbName],
-	);
-	if (!exists.rowCount) await admin.query(`create database "${dbName}"`);
-	await admin.end();
-	await migrate(db, {
-		migrationsFolder: path.resolve(import.meta.dir, "../../db/src/migrations"),
-	});
-});
-
-beforeEach(async () => {
-	await db.execute(
-		sql`truncate table "user", wallet, credit_transaction, api_key, ssh_key, server, activity cascade`,
-	);
-	await db
-		.insert(user)
-		.values({ id: USER, name: "Test", email: "test@example.com" });
-	await db.insert(wallet).values({ userId: USER });
-});
+beforeAll(() => prepareDatabase(db));
+beforeEach(() => resetDatabase(db));
 
 afterAll(async () => {
 	await db.$client.end();
@@ -93,7 +66,7 @@ describe("wallet", () => {
 			amountMicros: 10_000_000,
 			kind: "topup" as const,
 			description: "Top-up",
-			externalId: "polar:order_1",
+			externalId: "stripe:cs:cs_test_1",
 		};
 		expect((await addCredits(db, entry)).applied).toBe(true);
 		expect((await addCredits(db, entry)).applied).toBe(false);
@@ -179,6 +152,38 @@ describe("servers", () => {
 		await expect(
 			createServer(svc, agent, { planId: "vultr:vc2-1c-1gb" }),
 		).rejects.toThrow(/spend limit/);
+	});
+});
+
+describe("gpu servers", () => {
+	test("routes VRAM requirements to GPU clouds with the CUDA image", async () => {
+		await addCredits(db, {
+			userId: USER,
+			amountMicros: 20e6,
+			kind: "promo",
+			description: "t",
+		});
+		const res = await createServer(svc, actor, {
+			requirements: { minVramGb: 70 },
+		});
+		expect(res.server.gpu).toContain("VRAM");
+		expect(res.server.image).toBe("ubuntu-22.04-cuda");
+		expect(res.server.priceHourlyMicros).toBeGreaterThan(500_000);
+	});
+
+	test("rejects the CUDA image on CPU plans", async () => {
+		await addCredits(db, {
+			userId: USER,
+			amountMicros: 5e6,
+			kind: "promo",
+			description: "t",
+		});
+		await expect(
+			createServer(svc, actor, {
+				planId: "hetzner:cax11",
+				image: "ubuntu-22.04-cuda",
+			}),
+		).rejects.toThrow(/needs a GPU plan/);
 	});
 });
 

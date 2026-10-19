@@ -5,6 +5,7 @@ import { and, eq, inArray, isNull, lt, lte } from "drizzle-orm";
 import type { Actor, Services } from "../context";
 import { logActivity } from "./activity";
 import { meterUsage } from "./billing";
+import { runAutoTopups } from "./payments";
 import { destroyServer, refreshServer } from "./servers";
 
 const SUSPEND_GRACE_MS = 24 * 60 * 60 * 1000;
@@ -111,6 +112,8 @@ export function startJobs(
 		running = true;
 		try {
 			await meterUsage(svc);
+			// Top up before enforcing, so a saved card prevents suspensions.
+			await runAutoTopups(svc);
 			await enforceBalances(svc);
 		} catch (err) {
 			console.error("[jobs] metering failed:", err);

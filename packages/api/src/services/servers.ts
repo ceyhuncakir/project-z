@@ -2,12 +2,14 @@ import { ORPCError } from "@orpc/server";
 import {
 	buildUserData,
 	type Candidate,
+	DEFAULT_GPU_IMAGE,
 	DEFAULT_IMAGE,
 	findPlan,
 	findRegion,
 	formatUsd,
 	generateEd25519KeyPair,
 	IMAGE_IDS,
+	IMAGES,
 	matchPlans,
 	type PowerAction,
 	PROVIDERS,
@@ -54,7 +56,8 @@ export const createServerInputSchema = z.object({
 	regionId: z.string().optional(),
 	/** Used when `planId` is omitted: the cheapest matching plan wins. */
 	requirements: planFiltersSchema.optional(),
-	image: z.enum(IMAGE_IDS).default(DEFAULT_IMAGE),
+	/** Defaults to Ubuntu 24.04, or Ubuntu 22.04 + CUDA on GPU plans. */
+	image: z.enum(IMAGE_IDS).optional(),
 	sshPublicKeys: z.array(z.string()).max(10).optional(),
 	/** Saved SSH key ids. Defaults to all saved keys when no keys are passed. */
 	sshKeyIds: z.array(z.string()).max(10).optional(),
@@ -79,6 +82,7 @@ export function serializeServer(s: ServerRow) {
 		vcpu: s.vcpu,
 		memoryGb: s.memoryGb,
 		diskGb: s.diskGb,
+		gpu: s.gpu,
 		image: s.image,
 		ipv4: s.ipv4,
 		ipv6: s.ipv6,
@@ -226,7 +230,17 @@ export async function createServer(
 	rawInput: CreateServerInput,
 ) {
 	const input = createServerInputSchema.parse(rawInput);
-	const candidates = await resolveCandidates(svc, input);
+	let candidates = await resolveCandidates(svc, input);
+	if (IMAGES.find((i) => i.id === input.image)?.gpu) {
+		candidates = candidates.filter((c) => c.plan.gpu);
+		if (!candidates.length) {
+			throw new ORPCError("BAD_REQUEST", {
+				message: `${input.image} needs a GPU plan. Add GPU requirements (kind: "gpu", min_vram_gb) or pick a GPU plan.`,
+			});
+		}
+	}
+	const imageFor = (c: Candidate) =>
+		input.image ?? (c.plan.gpu ? DEFAULT_GPU_IMAGE : DEFAULT_IMAGE);
 	const first = candidates[0] as Candidate;
 	await ensureWallet(svc.db, actor.userId);
 	await checkSpendGuards(
@@ -251,6 +265,10 @@ export async function createServer(
 		vcpu: c.plan.vcpu,
 		memoryGb: c.plan.memoryGb,
 		diskGb: c.plan.diskGb,
+		gpu: c.plan.gpu
+			? `${c.plan.gpu.count}× ${c.plan.gpu.model}, ${c.plan.gpu.count * c.plan.gpu.vramGb} GB VRAM`
+			: null,
+		image: imageFor(c),
 		priceHourlyMicros: priceIn(c.plan, c.region.slug).hourlyMicros,
 		sandbox: svc.cloud.adapter(c.plan.provider).info.mode === "sandbox",
 	});
@@ -260,7 +278,6 @@ export async function createServer(
 		userId: actor.userId,
 		apiKeyId: actor.apiKeyId,
 		name,
-		image: input.image,
 		labels: input.labels ?? {},
 		status: "provisioning",
 		...snapshotFields(first),
@@ -276,7 +293,7 @@ export async function createServer(
 				name,
 				regionSlug: candidate.region.slug,
 				planSlug: candidate.plan.slug,
-				image: input.image,
+				image: imageFor(candidate),
 				sshPublicKeys: keys,
 				userData,
 			});

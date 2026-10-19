@@ -111,3 +111,49 @@ describe("ssh + cloud-init", () => {
 		expect(ud).toContain("echo hi");
 	});
 });
+
+describe("gpu plans", () => {
+	const gpuSnapshot: CatalogSnapshot = {
+		...snapshot,
+		regions: [...snapshot.regions, region("runpod", "us-tx-3", "US", "NA")],
+		plans: [
+			...snapshot.plans,
+			plan("runpod", "h100", 2_390_000, ["us-tx-3"], {
+				gpu: { model: "H100", count: 1, vramGb: 80 },
+			}),
+			plan("runpod", "2x-a100", 3_280_000, ["us-tx-3"], {
+				gpu: { model: "A100 80GB", count: 2, vramGb: 80 },
+			}),
+		],
+	};
+
+	test("CPU searches never return GPU plans unless asked", () => {
+		expect(matchPlans(gpuSnapshot, {}).some((m) => m.plan.gpu)).toBe(false);
+		expect(matchPlans(gpuSnapshot, { kind: "gpu" })).toHaveLength(2);
+		expect(matchPlans(gpuSnapshot, { kind: "any" })).toHaveLength(6);
+	});
+
+	test("filters by total VRAM and model name", () => {
+		expect(
+			matchPlans(gpuSnapshot, { minVramGb: 100 }).map((m) => m.plan.id),
+		).toEqual(["runpod:2x-a100"]);
+		expect(
+			matchPlans(gpuSnapshot, { gpuModels: ["h100"] }).map((m) => m.plan.id),
+		).toEqual(["runpod:h100"]);
+	});
+});
+
+describe("llm sizing", () => {
+	test("estimates VRAM from parameters and precision", async () => {
+		const { resolveLlm } = await import("./llm");
+		expect(resolveLlm({ model: "llama-3.3-70b" }).vramGb).toBe(170);
+		expect(
+			resolveLlm({ model: "llama-3.3-70b", precision: "int4" }).vramGb,
+		).toBe(43);
+		expect(resolveLlm({ model: "gpt-oss-120b" }).vramGb).toBeLessThanOrEqual(
+			80,
+		);
+		expect(resolveLlm({ paramsB: 7 }).precision).toBe("fp16");
+		expect(() => resolveLlm({ model: "nope" })).toThrow(/Unknown model/);
+	});
+});

@@ -6,42 +6,78 @@ import { createOvhAdapter } from "./providers/ovhcloud";
 import { createSandboxAdapter, type SandboxOptions } from "./providers/sandbox";
 import { createScalewayAdapter } from "./providers/scaleway";
 import { createVultrAdapter } from "./providers/vultr";
-import type { ProviderAdapter, ProviderId, ProviderInfo } from "./types";
+import {
+	type LiveProviderId,
+	PREVIEW_PROVIDER_IDS,
+	type ProviderAdapter,
+	type ProviderId,
+	type ProviderInfo,
+} from "./types";
 
 export * from "./catalog";
 export * from "./cloud-init";
 export * from "./images";
+export * from "./llm";
 export * from "./money";
 export * from "./ssh";
 export * from "./types";
 
-export const PROVIDERS: Record<ProviderId, Omit<ProviderInfo, "mode">> = {
-	hetzner: {
-		id: "hetzner",
-		name: "Hetzner",
-		website: "https://www.hetzner.com/cloud",
-	},
-	digitalocean: {
-		id: "digitalocean",
-		name: "DigitalOcean",
-		website: "https://www.digitalocean.com",
-	},
-	vultr: { id: "vultr", name: "Vultr", website: "https://www.vultr.com" },
-	linode: {
-		id: "linode",
-		name: "Akamai Linode",
-		website: "https://www.linode.com",
-	},
-	ovhcloud: {
-		id: "ovhcloud",
-		name: "OVHcloud",
-		website: "https://www.ovhcloud.com/en/public-cloud",
-	},
-	scaleway: {
-		id: "scaleway",
-		name: "Scaleway",
-		website: "https://www.scaleway.com",
-	},
+type ProviderMeta = Omit<ProviderInfo, "mode">;
+
+const provider = (
+	id: ProviderId,
+	name: string,
+	website: string,
+	category: ProviderMeta["category"] = "cloud",
+): ProviderMeta => ({
+	id,
+	name,
+	website,
+	category,
+	preview: (PREVIEW_PROVIDER_IDS as readonly string[]).includes(id),
+});
+
+export const PROVIDERS: Record<ProviderId, ProviderMeta> = {
+	hetzner: provider("hetzner", "Hetzner", "https://www.hetzner.com/cloud"),
+	digitalocean: provider(
+		"digitalocean",
+		"DigitalOcean",
+		"https://www.digitalocean.com",
+	),
+	vultr: provider("vultr", "Vultr", "https://www.vultr.com"),
+	linode: provider("linode", "Akamai Linode", "https://www.linode.com"),
+	ovhcloud: provider(
+		"ovhcloud",
+		"OVHcloud",
+		"https://www.ovhcloud.com/en/public-cloud",
+	),
+	scaleway: provider("scaleway", "Scaleway", "https://www.scaleway.com"),
+	upcloud: provider("upcloud", "UpCloud", "https://upcloud.com"),
+	contabo: provider("contabo", "Contabo", "https://contabo.com"),
+	civo: provider("civo", "Civo", "https://www.civo.com"),
+	exoscale: provider("exoscale", "Exoscale", "https://www.exoscale.com"),
+	runpod: provider("runpod", "RunPod", "https://www.runpod.io", "gpu"),
+	lambda: provider("lambda", "Lambda", "https://lambda.ai", "gpu"),
+	vastai: provider("vastai", "Vast.ai", "https://vast.ai", "gpu"),
+	coreweave: provider(
+		"coreweave",
+		"CoreWeave",
+		"https://www.coreweave.com",
+		"gpu",
+	),
+	paperspace: provider(
+		"paperspace",
+		"Paperspace",
+		"https://www.paperspace.com",
+		"gpu",
+	),
+	nebius: provider("nebius", "Nebius", "https://nebius.com", "gpu"),
+	hyperstack: provider(
+		"hyperstack",
+		"Hyperstack",
+		"https://www.hyperstack.cloud",
+		"gpu",
+	),
 };
 
 /** Platform credentials. A provider without credentials runs in sandbox mode. */
@@ -69,7 +105,7 @@ export function createCloud(config: CloudConfig = {}) {
 	const fx = config.eurUsdRate ?? 1.1;
 	const live = !config.sandboxOnly;
 
-	const adapters: Record<ProviderId, ProviderAdapter> = {
+	const live_: Record<LiveProviderId, ProviderAdapter> = {
 		hetzner:
 			live && config.hetzner
 				? createHetznerAdapter(PROVIDERS.hetzner, {
@@ -104,6 +140,12 @@ export function createCloud(config: CloudConfig = {}) {
 					})
 				: createSandboxAdapter(PROVIDERS.scaleway, config.sandbox),
 	};
+
+	// Preview providers are always simulated until their live adapters land.
+	const adapters = { ...live_ } as Record<ProviderId, ProviderAdapter>;
+	for (const id of PREVIEW_PROVIDER_IDS) {
+		adapters[id] = createSandboxAdapter(PROVIDERS[id], config.sandbox);
+	}
 
 	return {
 		adapters,

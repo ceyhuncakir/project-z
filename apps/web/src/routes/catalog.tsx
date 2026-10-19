@@ -33,7 +33,7 @@ export const Route = createFileRoute("/catalog")({
 			{
 				name: "description",
 				content:
-					"Compare VPS plans from Hetzner, DigitalOcean, Vultr, Linode, OVHcloud and Scaleway in one table.",
+					"Compare VPS and GPU plans from 17 clouds — Hetzner, DigitalOcean, Vultr, RunPod, Lambda and more — in one table.",
 			},
 		],
 	}),
@@ -86,8 +86,9 @@ function CatalogPage() {
 				</div>
 				{sandbox && (
 					<p className="mt-6 border border-warn/40 bg-warn/10 px-3 py-2 font-mono text-[11px]">
-						Some providers run in sandbox mode with indicative prices until
-						platform API credentials are configured.
+						Providers marked <span className="text-signal">°</span> / preview
+						are simulated with indicative prices, as are any providers without
+						platform API credentials configured.
 					</p>
 				)}
 				<CatalogFilters

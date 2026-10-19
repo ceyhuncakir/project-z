@@ -1,5 +1,10 @@
 import type { RouterClient } from "@orpc/server";
-import { CONTINENTS, PROVIDER_IDS, planFiltersSchema } from "@switchyard/cloud";
+import {
+	CONTINENTS,
+	llmSizingSchema,
+	PROVIDER_IDS,
+	planFiltersSchema,
+} from "@switchyard/cloud";
 import { server } from "@switchyard/db/schema/app";
 import { and, count, eq, notInArray } from "drizzle-orm";
 import { z } from "zod";
@@ -16,13 +21,22 @@ import {
 import { burnRate } from "../services/billing";
 import {
 	listImages,
+	listLlmModels,
 	listProviders,
 	listRegions,
 	previewRoute,
 	searchPlans,
 	searchPlansInputSchema,
+	sizeLlm,
 } from "../services/catalog";
-import { createPortalSession, createTopupCheckout } from "../services/payments";
+import {
+	addTestCredits,
+	createPortalSession,
+	createTopupCheckout,
+	getBillingSettings,
+	removeCard,
+	updateAutoTopup,
+} from "../services/payments";
 import {
 	createServer,
 	createServerInputSchema,
@@ -33,7 +47,6 @@ import {
 } from "../services/servers";
 import { addSshKey, deleteSshKey, listSshKeys } from "../services/ssh-keys";
 import {
-	addCredits,
 	ensureWallet,
 	getBalance,
 	listTransactions,
@@ -90,6 +103,23 @@ const catalogRouter = {
 		})
 		.input(z.object({ filters: planFiltersSchema.default({}) }))
 		.handler(({ context, input }) => previewRoute(context, input.filters)),
+	llmModels: publicProcedure
+		.route({
+			method: "GET",
+			path: "/llm/models",
+			tags: ["Catalog"],
+			summary: "Open-weight model presets",
+		})
+		.handler(() => listLlmModels()),
+	sizeLlm: publicProcedure
+		.route({
+			method: "POST",
+			path: "/llm/size",
+			tags: ["Catalog"],
+			summary: "VRAM needed for a model, and the cheapest GPU plans that fit",
+		})
+		.input(llmSizingSchema)
+		.handler(({ context, input }) => sizeLlm(context, input)),
 	images: publicProcedure
 		.route({
 			method: "GET",
@@ -220,28 +250,37 @@ const creditsRouter = {
 		.input(z.object({ amountUsd: z.number() }))
 		.handler(({ input }) => quoteTopup(input.amountUsd)),
 	checkout: sessionProcedure
-		.input(z.object({ amountUsd: z.number() }))
+		.input(
+			z.object({ amountUsd: z.number(), saveCard: z.boolean().optional() }),
+		)
 		.handler(({ context, input }) =>
-			createTopupCheckout(context, context.user, input.amountUsd),
+			createTopupCheckout(context, context.user, input),
 		),
 	portal: sessionProcedure.handler(({ context }) =>
-		createPortalSession(context, context.actor.userId),
+		createPortalSession(context, context.user),
+	),
+	billing: sessionProcedure.handler(({ context }) =>
+		getBillingSettings(context, context.actor.userId),
+	),
+	updateAutoTopup: sessionProcedure
+		.input(
+			z.object({
+				enabled: z.boolean(),
+				thresholdUsd: z.number().min(0).max(1_000),
+				amountUsd: z.number(),
+			}),
+		)
+		.handler(({ context, input }) =>
+			updateAutoTopup(context, context.actor, input),
+		),
+	removeCard: sessionProcedure.handler(({ context }) =>
+		removeCard(context, context.actor),
 	),
 	addTestCredits: sessionProcedure
 		.input(z.object({ amountUsd: z.number().positive().max(100) }))
-		.handler(async ({ context, input }) => {
-			if (!context.config.allowTestCredits)
-				throw new Error("Test credits are disabled");
-			await addCredits(context.db, {
-				userId: context.actor.userId,
-				amountMicros: Math.round(input.amountUsd * 1e6),
-				kind: "promo",
-				description: "Test credits",
-			});
-			return {
-				balanceMicros: await getBalance(context.db, context.actor.userId),
-			};
-		}),
+		.handler(({ context, input }) =>
+			addTestCredits(context, context.actor.userId, input.amountUsd),
+		),
 };
 
 const apiKeysRouter = {
@@ -323,7 +362,7 @@ const activityRouter = {
 
 export const appRouter = {
 	meta: publicProcedure.handler(({ context }) => ({
-		paymentsEnabled: Boolean(context.config.polar),
+		paymentsEnabled: Boolean(context.config.stripe),
 		testCreditsEnabled: context.config.allowTestCredits,
 		githubAuth: context.config.githubAuth,
 		mcpUrl: `${context.config.apiUrl}/mcp`,

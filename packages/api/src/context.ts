@@ -1,8 +1,8 @@
-import type { Polar } from "@polar-sh/sdk";
 import type { Session } from "@switchyard/auth";
 import type { Cloud } from "@switchyard/cloud";
 import type { Database } from "@switchyard/db";
 import type { apiKey } from "@switchyard/db/schema/app";
+import type Stripe from "stripe";
 
 export interface AppConfig {
 	/** Public URL of the web app. */
@@ -11,11 +11,7 @@ export interface AppConfig {
 	apiUrl: string;
 	allowTestCredits: boolean;
 	githubAuth: boolean;
-	polar: {
-		client: Polar;
-		productId: string;
-		webhookSecret: string | null;
-	} | null;
+	stripe: { client: Stripe; webhookSecret: string | null } | null;
 }
 
 /** Long-lived dependencies shared by RPC handlers, MCP tools and workers. */

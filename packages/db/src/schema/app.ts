@@ -28,6 +28,25 @@ export const wallet = pgTable("wallet", {
 		.primaryKey()
 		.references(() => user.id, { onDelete: "cascade" }),
 	balanceMicros: micros("balance_micros").notNull().default(0),
+	/** Stripe customer, created on first checkout. */
+	stripeCustomerId: text("stripe_customer_id").unique(),
+	/** Card saved for off-session auto top-ups. */
+	stripePaymentMethodId: text("stripe_payment_method_id"),
+	cardBrand: text("card_brand"),
+	cardLast4: text("card_last4"),
+	autoTopupEnabled: boolean("auto_topup_enabled").notNull().default(false),
+	/** Top up when the balance drops below this. */
+	autoTopupThresholdMicros: micros("auto_topup_threshold_micros")
+		.notNull()
+		.default(5_000_000),
+	/** Credit added per auto top-up (fee charged on top). */
+	autoTopupAmountMicros: micros("auto_topup_amount_micros")
+		.notNull()
+		.default(25_000_000),
+	autoTopupLastAttemptAt: timestamp("auto_topup_last_attempt_at", {
+		withTimezone: true,
+	}),
+	autoTopupError: text("auto_topup_error"),
 	createdAt: createdAt(),
 	updatedAt: timestamp("updated_at", { withTimezone: true })
 		.defaultNow()
@@ -55,7 +74,7 @@ export const creditTransaction = pgTable(
 		serverId: text("server_id"),
 		/** Usage rows are aggregated per server per hour; this is the hour. */
 		periodStart: timestamp("period_start", { withTimezone: true }),
-		/** Idempotency key for external events, e.g. a Polar order id. */
+		/** Idempotency key for external events, e.g. a Stripe Checkout Session id. */
 		externalId: text("external_id").unique(),
 		metadata: jsonb("metadata").$type<Record<string, unknown>>(),
 		createdAt: createdAt(),
@@ -134,6 +153,8 @@ export const server = pgTable(
 		vcpu: integer("vcpu").notNull(),
 		memoryGb: doublePrecision("memory_gb").notNull(),
 		diskGb: integer("disk_gb").notNull(),
+		/** e.g. "2× A100 80GB, 160 GB VRAM"; null on CPU-only plans. */
+		gpu: text("gpu"),
 		image: text("image").notNull(),
 		priceHourlyMicros: micros("price_hourly_micros").notNull(),
 		status: serverStatus("status").notNull().default("provisioning"),

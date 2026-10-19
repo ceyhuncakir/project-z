@@ -16,6 +16,7 @@
 		"@orpc/server": "catalog:",
 		"@orpc/tanstack-query": "^1.15.6",
 		"@switchyard/api": "workspace:*",
+		"@switchyard/cloud": "workspace:*",
 		"@switchyard/ui": "workspace:*",
 		"@tailwindcss/vite": "^4.3.3",
 		"@tanstack/react-form": "^1.33.5",
@@ -26,14 +27,14 @@
 		"@varlock/vite-integration": "1.5.1",
 		"better-auth": "catalog:",
 		"lucide-react": "^1.56.0",
+		"motion": "13.4.6",
 		"next-themes": "catalog:",
 		"react": "^19.3.0",
 		"react-dom": "^19.3.0",
 		"sonner": "catalog:",
 		"tailwindcss": "catalog:",
 		"varlock": "catalog:",
-		"zod": "catalog:",
-		"@switchyard/cloud": "workspace:*"
+		"zod": "catalog:"
 	},
 	"devDependencies": {
 		"@switchyard/config": "workspace:*",

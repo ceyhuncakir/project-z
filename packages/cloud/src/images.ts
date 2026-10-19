@@ -1,19 +1,34 @@
-import type { Image, ImageId, ProviderId } from "./types";
+import {
+	type Image,
+	type ImageId,
+	type LiveProviderId,
+	ProviderError,
+} from "./types";
 
 export const IMAGES: Image[] = [
 	{ id: "ubuntu-24.04", name: "Ubuntu 24.04 LTS", family: "ubuntu" },
 	{ id: "ubuntu-22.04", name: "Ubuntu 22.04 LTS", family: "ubuntu" },
 	{ id: "debian-12", name: "Debian 12", family: "debian" },
 	{ id: "rocky-9", name: "Rocky Linux 9", family: "rocky" },
+	{
+		id: "ubuntu-22.04-cuda",
+		name: "Ubuntu 22.04 + CUDA 12",
+		family: "ubuntu",
+		gpu: true,
+	},
 ];
 
 export const DEFAULT_IMAGE: ImageId = "ubuntu-24.04";
+export const DEFAULT_GPU_IMAGE: ImageId = "ubuntu-22.04-cuda";
 
 /**
  * Provider-native image identifiers. OVHcloud resolves images per region at
  * runtime by name, so it maps to the display name instead of an id.
  */
-export const PROVIDER_IMAGES: Record<ProviderId, Record<ImageId, string>> = {
+export const PROVIDER_IMAGES: Record<
+	LiveProviderId,
+	Partial<Record<ImageId, string>>
+> = {
 	hetzner: {
 		"ubuntu-24.04": "ubuntu-24.04",
 		"ubuntu-22.04": "ubuntu-22.04",
@@ -52,3 +67,14 @@ export const PROVIDER_IMAGES: Record<ProviderId, Record<ImageId, string>> = {
 		"rocky-9": "rockylinux_9",
 	},
 };
+
+/** Provider-native image id, or a non-retryable error if the provider lacks it. */
+export function providerImage(
+	provider: LiveProviderId,
+	image: ImageId,
+): string {
+	const native = PROVIDER_IMAGES[provider][image];
+	if (!native)
+		throw new ProviderError(provider, `image ${image} is not available`);
+	return native;
+}

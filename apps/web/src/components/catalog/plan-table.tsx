@@ -38,7 +38,7 @@ export function PlanTable({
 					<TableHead className="text-right">vCPU</TableHead>
 					<TableHead className="text-right">RAM</TableHead>
 					<TableHead className="text-right">Disk</TableHead>
-					<TableHead>CPU</TableHead>
+					<TableHead>Compute</TableHead>
 					<TableHead>Regions</TableHead>
 					<TableHead className="text-right">Per hour</TableHead>
 					<TableHead className="text-right">Per month</TableHead>
@@ -90,6 +90,14 @@ export function PlanTable({
 									<p className="font-medium text-[13px]">{p.name}</p>
 									<p className="font-mono text-[10.5px] text-muted-foreground">
 										{p.id}
+										{p.preview && (
+											<span
+												className="ml-1.5 text-signal"
+												title="Simulated until the live integration ships"
+											>
+												preview
+											</span>
+										)}
 									</p>
 								</div>
 							</div>
@@ -104,14 +112,25 @@ export function PlanTable({
 							{p.diskGb} GB
 						</TableCell>
 						<TableCell>
-							<div className="flex gap-1">
-								<Badge
-									variant={p.cpuType === "dedicated" ? "outline" : "default"}
-								>
-									{p.cpuType}
-								</Badge>
-								{p.arch === "arm" && <Badge variant="signal">arm</Badge>}
-							</div>
+							{p.gpu ? (
+								<div className="flex items-center gap-1.5">
+									<Badge variant="signal">
+										{p.gpu.count}× {p.gpu.model}
+									</Badge>
+									<span className="font-mono text-[10.5px] text-muted-foreground">
+										{p.gpu.totalVramGb} GB VRAM
+									</span>
+								</div>
+							) : (
+								<div className="flex gap-1">
+									<Badge
+										variant={p.cpuType === "dedicated" ? "outline" : "default"}
+									>
+										{p.cpuType}
+									</Badge>
+									{p.arch === "arm" && <Badge variant="signal">arm</Badge>}
+								</div>
+							)}
 						</TableCell>
 						<TableCell className="text-muted-foreground">
 							<span

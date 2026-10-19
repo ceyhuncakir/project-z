@@ -4,6 +4,7 @@ import {
 	CONTINENTS,
 	formatUsd,
 	IMAGE_IDS,
+	LLM_MODELS,
 	type PlanFilters,
 	PROVIDER_IDS,
 } from "@switchyard/cloud";
@@ -16,6 +17,7 @@ import {
 	listProviders,
 	listRegions,
 	searchPlans,
+	sizeLlm,
 } from "./services/catalog";
 import {
 	createServer,
@@ -27,13 +29,15 @@ import {
 } from "./services/servers";
 import { getBalance } from "./services/wallet";
 
-const INSTRUCTIONS = `Switchyard provisions Linux servers on Hetzner, DigitalOcean, Vultr, Akamai Linode, OVHcloud and Scaleway from one prepaid balance.
+const INSTRUCTIONS = `Switchyard provisions Linux servers from one prepaid balance across general clouds (Hetzner, DigitalOcean, Vultr, Akamai Linode, OVHcloud, Scaleway, UpCloud, Contabo, Civo, Exoscale) and GPU clouds for LLM hosting (RunPod, Lambda, Vast.ai, CoreWeave, Paperspace, Nebius, Hyperstack).
 
 Typical flow:
 1. create_server with requirements (e.g. min_memory_gb: 4, continents: ["EU"]) — the router picks the cheapest matching plan and falls back to the next provider if one is out of capacity. Use search_plans first only if you want to compare options or pin an exact plan_id.
 2. get_server with wait_for_running_seconds: 90 until status is "running" and ipv4 is set.
 3. SSH in as root. If you passed no SSH key, create_server returns a one-time private key: save it to a file with mode 600.
 4. delete_server as soon as the work is done. Billing is per minute with a one-hour minimum per server; stopped servers are still billed.
+
+For GPUs / LLM serving: call size_llm with the model to get the VRAM it needs, then create_server with min_vram_gb (GPU plans default to Ubuntu 22.04 + CUDA).
 
 Prices are USD. Check get_balance before large jobs.`;
 
@@ -69,6 +73,20 @@ const filterShape = {
 		.describe("EU, NA, SA, AS, OC, AF"),
 	cpu_type: z.enum(["shared", "dedicated"]).optional(),
 	arch: z.enum(["x86", "arm"]).optional(),
+	kind: z
+		.enum(["cpu", "gpu", "any"])
+		.optional()
+		.describe("cpu (default), gpu, or any. GPU filters below imply gpu."),
+	gpu_models: z
+		.array(z.string())
+		.optional()
+		.describe('GPU model substrings, e.g. ["H100","A100"]'),
+	min_gpu_count: z.number().int().positive().optional(),
+	min_vram_gb: z
+		.number()
+		.positive()
+		.optional()
+		.describe("Minimum total GPU memory in GB (use size_llm to estimate)"),
 };
 
 type FilterArgs = {
@@ -87,6 +105,10 @@ const toFilters = (a: FilterArgs): PlanFilters => ({
 	continents: a.continents,
 	cpuType: a.cpu_type,
 	arch: a.arch,
+	kind: a.kind,
+	gpuModels: a.gpu_models,
+	minGpuCount: a.min_gpu_count,
+	minVramGb: a.min_vram_gb,
 });
 
 function agentServer(s: SerializedServer) {
@@ -99,6 +121,7 @@ function agentServer(s: SerializedServer) {
 		location: `${s.city}, ${s.country}`,
 		plan: s.planId,
 		specs: `${s.vcpu} vCPU · ${s.memoryGb} GB RAM · ${s.diskGb} GB disk`,
+		gpu: s.gpu ?? undefined,
 		image: s.image,
 		ipv4: s.ipv4,
 		ipv6: s.ipv6,
@@ -164,6 +187,9 @@ export function createMcpServer(svc: Services, key: ApiKeyRecord) {
 						plan_id: p.id,
 						provider: p.providerName,
 						specs: `${p.vcpu} vCPU (${p.cpuType}, ${p.arch}) · ${p.memoryGb} GB RAM · ${p.diskGb} GB disk`,
+						gpu: p.gpu
+							? `${p.gpu.count}× ${p.gpu.model} · ${p.gpu.totalVramGb} GB VRAM`
+							: undefined,
 						price_per_hour: formatUsd(p.priceHourlyMicros, { precise: true }),
 						price_per_month: formatUsd(p.priceMonthlyMicros),
 						regions: p.regions.map(
@@ -174,6 +200,54 @@ export function createMcpServer(svc: Services, key: ApiKeyRecord) {
 										: ""
 								}`,
 						),
+					})),
+				};
+			}),
+	);
+
+	mcp.registerTool(
+		"size_llm",
+		{
+			title: "Size an LLM deployment",
+			description:
+				"Estimate the GPU memory needed to serve an open-weight model and list the cheapest GPU plans that fit. Then call create_server with min_vram_gb (or the plan_id).",
+			inputSchema: {
+				model: z
+					.string()
+					.optional()
+					.describe(`Preset: ${LLM_MODELS.map((m) => m.id).join(", ")}`),
+				params_b: z
+					.number()
+					.positive()
+					.optional()
+					.describe("Parameters in billions, if no preset"),
+				precision: z
+					.enum(["fp16", "fp8", "int8", "int4"])
+					.optional()
+					.describe("Defaults to the model's native precision"),
+			},
+			annotations: { readOnlyHint: true, openWorldHint: false },
+		},
+		(args) =>
+			run(async () => {
+				const res = await sizeLlm(svc, {
+					model: args.model,
+					paramsB: args.params_b,
+					precision: args.precision,
+				});
+				return {
+					model: res.model,
+					precision: res.precision,
+					vram_needed_gb: res.vramGb,
+					note: "Weights × 1.2 for KV cache and activations at moderate context. Long contexts or large batches need more.",
+					cheapest_fits: res.plans.map((p) => ({
+						plan_id: p.id,
+						provider: p.providerName,
+						gpu: p.gpu
+							? `${p.gpu.count}× ${p.gpu.model} · ${p.gpu.totalVramGb} GB VRAM`
+							: null,
+						price_per_hour: formatUsd(p.priceHourlyMicros, { precise: true }),
+						regions: p.regions.map((r) => r.id),
 					})),
 				};
 			}),
@@ -215,7 +289,8 @@ export function createMcpServer(svc: Services, key: ApiKeyRecord) {
 				(await listProviders(svc)).map((p) => ({
 					provider: p.id,
 					name: p.name,
-					mode: p.mode,
+					category: p.category,
+					mode: p.preview ? "preview (simulated)" : p.mode,
 					regions: p.regions,
 					plans: p.plans,
 					from_per_hour: p.fromHourlyMicros

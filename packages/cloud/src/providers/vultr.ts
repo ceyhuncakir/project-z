@@ -1,5 +1,5 @@
 import { createJsonClient } from "../http";
-import { PROVIDER_IMAGES } from "../images";
+import { providerImage } from "../images";
 import { hourlyFromMonthlyMicros } from "../reference-catalog";
 import type {
 	Continent,
@@ -166,7 +166,7 @@ export function createVultrAdapter(
 					body: {
 						region: input.regionSlug,
 						plan: input.planSlug,
-						os_id: Number(PROVIDER_IMAGES.vultr[input.image]),
+						os_id: Number(providerImage("vultr", input.image)),
 						label: input.name,
 						hostname: hostname(input.name),
 						user_data: toBase64(input.userData),

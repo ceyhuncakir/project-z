@@ -1,5 +1,5 @@
 import { createJsonClient } from "../http";
-import { PROVIDER_IMAGES } from "../images";
+import { providerImage } from "../images";
 import type {
 	Continent,
 	Plan,
@@ -170,7 +170,7 @@ export function createDigitalOceanAdapter(
 						name: hostname(input.name),
 						region: input.regionSlug,
 						size: input.planSlug,
-						image: PROVIDER_IMAGES.digitalocean[input.image],
+						image: providerImage("digitalocean", input.image),
 						user_data: input.userData,
 						ipv6: true,
 						tags: [
