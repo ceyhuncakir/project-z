@@ -1,82 +1,47 @@
-import type { ProviderId } from "@switchyard/cloud";
-import { server, wallet } from "@switchyard/db/schema/app";
-import { and, eq, inArray, isNull, lt, lte } from "drizzle-orm";
+import { server } from "@switchyard/db/schema/app";
+import { and, asc, eq, inArray, isNull, lt, or } from "drizzle-orm";
 
-import type { Actor, Services } from "../context";
-import { logActivity } from "./activity";
+import type { Services } from "../context";
 import { meterUsage } from "./billing";
+import { expireServers, sendLongRunningAlerts } from "./expiry";
+import { sendLowBalanceAlerts } from "./notifications";
 import { runAutoTopups } from "./payments";
-import { destroyServer, refreshServer } from "./servers";
+import { syncServer } from "./servers";
 
-const SUSPEND_GRACE_MS = 24 * 60 * 60 * 1000;
 const STUCK_CREATE_MS = 10 * 60 * 1000;
-
-const system = (userId: string): Actor => ({
-	userId,
-	apiKeyId: null,
-	via: "system",
-});
+const SYNC_EVERY_MS = 5 * 60 * 1000;
+const SYNC_BATCH = 200;
 
 /**
- * Out of credits → power servers off ("suspended"). Still out of credits a
- * day later → destroy them. Topping up lets the user start them again.
+ * Checks settled servers against their provider every few minutes, so one
+ * deleted in the provider's console stops accruing fees. Servers stuck in
+ * `deleting` (a delete that crashed half way) are picked up the same way.
  */
-export async function enforceBalances(svc: Services, now = new Date()) {
-	const toSuspend = await svc.db
-		.select({ server })
+export async function syncServers(svc: Services, now = new Date()) {
+	const rows = await svc.db
+		.select()
 		.from(server)
-		.innerJoin(wallet, eq(wallet.userId, server.userId))
 		.where(
 			and(
-				lte(wallet.balanceMicros, 0),
-				inArray(server.status, ["running", "provisioning"]),
+				inArray(server.status, ["running", "stopped", "suspended", "deleting"]),
+				or(
+					isNull(server.syncedAt),
+					lt(server.syncedAt, new Date(now.getTime() - SYNC_EVERY_MS)),
+				),
 			),
-		);
-	for (const { server: row } of toSuspend) {
+		)
+		.orderBy(asc(server.syncedAt))
+		.limit(SYNC_BATCH);
+	let closed = 0;
+	for (const row of rows) {
 		try {
-			if (row.providerServerId) {
-				await svc.cloud
-					.adapter(row.provider as ProviderId)
-					.powerAction(row.providerServerId, "stop");
-			}
-			await svc.db
-				.update(server)
-				.set({ status: "suspended", suspendedAt: now })
-				.where(eq(server.id, row.id));
-			await logActivity(svc.db, system(row.userId), {
-				action: "server.suspend",
-				serverId: row.id,
-				message: `Suspended ${row.name}: credit balance reached zero`,
-			});
+			const after = await syncServer(svc, row, now);
+			if (after.status === "deleted" || after.status === "detached") closed++;
 		} catch (err) {
-			console.error(`[jobs] suspend ${row.id} failed:`, (err as Error).message);
+			console.error(`[jobs] sync ${row.id} failed:`, (err as Error).message);
 		}
 	}
-
-	const toDestroy = await svc.db
-		.select({ server })
-		.from(server)
-		.innerJoin(wallet, eq(wallet.userId, server.userId))
-		.where(
-			and(
-				lte(wallet.balanceMicros, 0),
-				eq(server.status, "suspended"),
-				lt(server.suspendedAt, new Date(now.getTime() - SUSPEND_GRACE_MS)),
-			),
-		);
-	for (const { server: row } of toDestroy) {
-		try {
-			await destroyServer(
-				svc,
-				system(row.userId),
-				row,
-				"suspended for 24h without credits",
-			);
-		} catch (err) {
-			console.error(`[jobs] destroy ${row.id} failed:`, (err as Error).message);
-		}
-	}
-	return { suspended: toSuspend.length, destroyed: toDestroy.length };
+	return { checked: rows.length, closed };
 }
 
 /** Advances servers that are still booting and fails orders that never reached a provider. */
@@ -87,7 +52,7 @@ export async function reconcileProvisioning(svc: Services, now = new Date()) {
 		.where(eq(server.status, "provisioning"));
 	for (const row of rows) {
 		if (row.providerServerId) {
-			await refreshServer(svc, row);
+			await syncServer(svc, row, now);
 		} else if (now.getTime() - row.createdAt.getTime() > STUCK_CREATE_MS) {
 			await svc.db
 				.update(server)
@@ -111,10 +76,13 @@ export function startJobs(
 		if (running) return;
 		running = true;
 		try {
+			// Close servers deleted at the provider before charging for another minute.
+			await syncServers(svc);
 			await meterUsage(svc);
-			// Top up before enforcing, so a saved card prevents suspensions.
 			await runAutoTopups(svc);
-			await enforceBalances(svc);
+			await sendLowBalanceAlerts(svc);
+			await expireServers(svc);
+			await sendLongRunningAlerts(svc);
 		} catch (err) {
 			console.error("[jobs] metering failed:", err);
 		} finally {

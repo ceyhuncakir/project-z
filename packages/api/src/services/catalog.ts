@@ -8,6 +8,7 @@ import {
 	type PlanMatch,
 	type PlanSort,
 	PROVIDERS,
+	type ProviderId,
 	planFiltersSchema,
 	priceIn,
 	rankCandidates,
@@ -96,6 +97,8 @@ export async function listProviders(svc: Services) {
 		const plans = snapshot.plans.filter((pl) => pl.provider === p.id);
 		return {
 			...p,
+			/** Users can connect their own account for it. */
+			connectable: svc.cloud.connectable(p.id),
 			regions: snapshot.regions.filter((r) => r.provider === p.id).length,
 			plans: plans.length,
 			fromHourlyMicros: plans.length
@@ -116,10 +119,15 @@ export async function previewRoute(svc: Services, filters: PlanFilters) {
 }
 
 /** VRAM needed to serve a model, and the cheapest GPU plans that fit it. */
-export async function sizeLlm(svc: Services, input: LlmSizingInput, limit = 5) {
+export async function sizeLlm(
+	svc: Services,
+	input: LlmSizingInput,
+	limit = 5,
+	providers?: ProviderId[],
+) {
 	const need = resolveLlm(input);
 	const { plans } = await searchPlans(svc, {
-		filters: { kind: "gpu", minVramGb: need.vramGb },
+		filters: { kind: "gpu", minVramGb: need.vramGb, providers },
 		sort: "price",
 		limit,
 	});

@@ -3,7 +3,7 @@ import {
 	LLM_PRECISIONS,
 	type LlmPrecision,
 } from "@switchyard/cloud/llm";
-import { Button } from "@switchyard/ui/components/button";
+import { Button, buttonVariants } from "@switchyard/ui/components/button";
 import { Checkbox } from "@switchyard/ui/components/checkbox";
 import {
 	Dialog,
@@ -33,12 +33,13 @@ import {
 } from "@/components/catalog/filters";
 import { PlanTable } from "@/components/catalog/plan-table";
 import { CopyButton } from "@/components/copy-button";
+import { ProviderLogo } from "@/components/provider-logo";
 import { flag, formatUsd } from "@/lib/format";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_app/servers/new")({
 	validateSearch: z.object({ planId: z.string().optional() }),
-	head: () => ({ meta: [{ title: "New server — Switchyard" }] }),
+	head: () => ({ meta: [{ title: "New server — HessianLabs" }] }),
 	component: NewServerPage,
 });
 
@@ -96,6 +97,8 @@ function NewServerPage() {
 		precision: "",
 	});
 	const [name, setName] = useState("");
+	/** Hours until it deletes itself; "" for no time limit. */
+	const [ttlHours, setTtlHours] = useState("");
 	const [selectedKeys, setSelectedKeys] = useState<string[] | null>(null);
 	const [pastedKey, setPastedKey] = useState("");
 	const [userData, setUserData] = useState("");
@@ -105,12 +108,18 @@ function NewServerPage() {
 	} | null>(null);
 
 	const overview = useOverview();
+	const meta = useQuery(orpc.meta.queryOptions());
+	const accounts = useQuery(orpc.providerAccounts.list.queryOptions());
+	const connected = (accounts.data ?? [])
+		.filter((a) => !a.error)
+		.map((a) => a.provider);
 	const savedKeys = useQuery(orpc.sshKeys.list.queryOptions());
 	const images = useQuery(orpc.catalog.images.queryOptions());
 	const llmModels = useQuery(orpc.catalog.llmModels.queryOptions());
 
 	const gpuAuto = req.workload === "gpu";
 	const autoFilters = {
+		providers: connected,
 		kind: req.workload,
 		minVcpu: gpuAuto ? undefined : req.minVcpu,
 		minMemoryGb: gpuAuto ? undefined : req.minMemoryGb,
@@ -125,18 +134,22 @@ function NewServerPage() {
 	const preview = useQuery(
 		orpc.catalog.route.queryOptions({
 			input: { filters: autoFilters },
-			enabled: mode === "auto",
+			enabled: mode === "auto" && connected.length > 0,
 			placeholderData: keepPreviousData,
 		}),
 	);
+	// Only plans on connected accounts can be created.
+	const planProviders = filters.providers?.length
+		? connected.filter((p) => filters.providers?.includes(p))
+		: connected;
 	const plans = useQuery(
 		orpc.catalog.plans.queryOptions({
 			input: {
-				filters: toFilters(filters),
+				filters: { ...toFilters(filters), providers: planProviders },
 				sort: filters.sort ?? "price",
 				limit: 500,
 			},
-			enabled: mode === "plan",
+			enabled: mode === "plan" && planProviders.length > 0,
 			placeholderData: keepPreviousData,
 		}),
 	);
@@ -179,7 +192,11 @@ function NewServerPage() {
 	const effectiveImage =
 		image ?? (isGpu ? "ubuntu-22.04-cuda" : "ubuntu-24.04");
 	const balance = overview.data?.balanceMicros ?? 0;
-	const affordable = estimate ? balance >= estimate.priceHourlyMicros : true;
+	const feeHourly =
+		estimate && meta.data
+			? Math.ceil((estimate.priceHourlyMicros * meta.data.feePercent) / 100)
+			: undefined;
+	const affordable = balance > 0 && balance >= (feeHourly ?? 0);
 	const canSubmit =
 		(mode === "auto" ? Boolean(preview.data?.length) : Boolean(selected)) &&
 		affordable;
@@ -195,6 +212,7 @@ function NewServerPage() {
 			sshPublicKeys: keys,
 			sshKeyIds: selectedKeys ?? undefined,
 			userData: userData.trim() || undefined,
+			ttlHours: ttlHours ? Number(ttlHours) : undefined,
 		});
 	}
 
@@ -211,11 +229,34 @@ function NewServerPage() {
 		}
 	}
 
+	if (accounts.isSuccess && !connected.length) {
+		return (
+			<>
+				<PageHeader title="New server" />
+				<Panel title="Connect a cloud account first">
+					<div className="flex flex-col items-start gap-4 p-4 sm:flex-row sm:items-center">
+						<p className="flex-1 text-[13px] text-muted-foreground">
+							Servers are created in your own Hetzner, DigitalOcean, Vultr or
+							other cloud account, and the provider bills you for them directly.
+							Connect at least one account to start.
+						</p>
+						<Link
+							to="/providers"
+							className={buttonVariants({ variant: "signal" })}
+						>
+							Connect an account
+						</Link>
+					</div>
+				</Panel>
+			</>
+		);
+	}
+
 	return (
 		<>
 			<PageHeader
 				title="New server"
-				description="Describe what you need and let the router pick, or choose an exact plan."
+				description="Describe what you need and let the router pick from your connected accounts, or choose an exact plan."
 			/>
 			<div className="grid gap-6 lg:grid-cols-[1fr_300px] lg:items-start">
 				<div className="min-w-0 space-y-6">
@@ -470,15 +511,21 @@ function NewServerPage() {
 											<span className="font-mono text-[11px] text-muted-foreground">
 												{i + 1}
 											</span>
-											<span className="min-w-0 truncate">
-												<span className="font-medium">{p.providerName}</span>{" "}
-												<span className="text-muted-foreground">
-													{p.name} ·{" "}
-													{p.gpu
-														? `${p.gpu.count}× ${p.gpu.model} · ${p.gpu.totalVramGb} GB VRAM`
-														: `${p.vcpu} vCPU · ${p.memoryGb} GB`}{" "}
-													· {flag(p.regions[0]?.country ?? "")}{" "}
-													{p.regions[0]?.city}
+											<span className="flex min-w-0 items-center gap-2">
+												<ProviderLogo
+													provider={p.provider}
+													className="size-5"
+												/>
+												<span className="min-w-0 truncate">
+													<span className="font-medium">{p.providerName}</span>{" "}
+													<span className="text-muted-foreground">
+														{p.name} ·{" "}
+														{p.gpu
+															? `${p.gpu.count}× ${p.gpu.model} · ${p.gpu.totalVramGb} GB VRAM`
+															: `${p.vcpu} vCPU · ${p.memoryGb} GB`}{" "}
+														· {flag(p.regions[0]?.country ?? "")}{" "}
+														{p.regions[0]?.city}
+													</span>
 												</span>
 											</span>
 											<span className="tabular font-mono">
@@ -499,13 +546,14 @@ function NewServerPage() {
 							<CatalogFilters
 								className="border-b p-4"
 								value={filters}
-								total={plans.data?.total}
+								total={planProviders.length ? plans.data?.total : 0}
+								only={connected}
 								onChange={setFilters}
 							/>
 							<div className="max-h-[420px] overflow-y-auto">
 								<PlanTable
-									plans={plans.data?.plans ?? []}
-									loading={plans.isPending}
+									plans={planProviders.length ? (plans.data?.plans ?? []) : []}
+									loading={planProviders.length > 0 && plans.isPending}
 									selectedId={planId}
 									onSelect={(p) => setPlanId(p.id)}
 								/>
@@ -566,6 +614,23 @@ function NewServerPage() {
 									value={name}
 									onChange={(e) => setName(e.target.value)}
 								/>
+							</Field>
+							<Field
+								label="Time limit"
+								hint="Deleted automatically after this long, unless someone keeps it."
+							>
+								<NativeSelect
+									aria-label="Time limit"
+									value={ttlHours}
+									onChange={(e) => setTtlHours(e.target.value)}
+								>
+									<option value="">None</option>
+									<option value="1">1 hour</option>
+									<option value="4">4 hours</option>
+									<option value="24">1 day</option>
+									<option value="72">3 days</option>
+									<option value="168">1 week</option>
+								</NativeSelect>
 							</Field>
 						</div>
 					</Panel>
@@ -645,18 +710,35 @@ function NewServerPage() {
 									)}
 								</dd>
 							</div>
-							<div className="flex justify-between px-4 py-3">
-								<dt className="text-muted-foreground">Per hour</dt>
-								<dd className="tabular font-mono">
+							<div className="flex justify-between gap-3 px-4 py-3">
+								<dt className="text-muted-foreground">
+									Provider price
+									<span className="block font-mono text-[10.5px]">
+										billed to your account
+									</span>
+								</dt>
+								<dd className="tabular text-right font-mono">
 									{estimate
-										? formatUsd(estimate.priceHourlyMicros, { precise: true })
+										? `${formatUsd(estimate.priceHourlyMicros, { precise: true })}/h`
 										: "—"}
+									<span className="block text-[10.5px] text-muted-foreground">
+										{estimate
+											? `${formatUsd(estimate.priceMonthlyMicros)}/mo`
+											: ""}
+									</span>
 								</dd>
 							</div>
-							<div className="flex justify-between px-4 py-3">
-								<dt className="text-muted-foreground">Per month</dt>
-								<dd className="tabular font-mono text-muted-foreground">
-									{estimate ? formatUsd(estimate.priceMonthlyMicros) : "—"}
+							<div className="flex justify-between gap-3 px-4 py-3">
+								<dt className="text-muted-foreground">
+									HessianLabs fee
+									<span className="block font-mono text-[10.5px]">
+										{meta.data ? `${meta.data.feePercent}%, from credits` : ""}
+									</span>
+								</dt>
+								<dd className="tabular font-mono">
+									{feeHourly !== undefined
+										? `${formatUsd(feeHourly, { precise: true })}/h`
+										: "—"}
 								</dd>
 							</div>
 							<div className="flex justify-between px-4 py-3">
@@ -683,14 +765,15 @@ function NewServerPage() {
 							</Button>
 							{!affordable && (
 								<p className="text-[12px] text-destructive">
-									You need at least one hour of credit.{" "}
+									Add credits to cover HessianLabs's fee.{" "}
 									<Link to="/credits" className="underline underline-offset-4">
 										Add credits
 									</Link>
 								</p>
 							)}
 							<p className="text-[11.5px] text-muted-foreground">
-								Billed per minute, one-hour minimum.
+								The provider bills the server to your account. The fee is
+								charged per minute from your credits, one-hour minimum.
 							</p>
 						</div>
 					</Panel>
@@ -725,7 +808,7 @@ function NewServerPage() {
 						/>
 					</div>
 					<p className="font-mono text-[11.5px] text-muted-foreground">
-						chmod 600 switchyard-key && ssh -i switchyard-key root@&lt;ip&gt;
+						chmod 600 hessianlabs-key && ssh -i hessianlabs-key root@&lt;ip&gt;
 					</p>
 					<DialogFooter>
 						<Button
@@ -737,7 +820,7 @@ function NewServerPage() {
 								);
 								const a = Object.assign(document.createElement("a"), {
 									href: url,
-									download: "switchyard-key",
+									download: "hessianlabs-key",
 								});
 								a.click();
 								URL.revokeObjectURL(url);

@@ -12,23 +12,25 @@
 		"auth:generate": "varlock run -- bun x auth@latest generate --config src/services.ts --output ../../packages/db/src/schema/auth.ts --yes"
 	},
 	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.32.1",
 		"@orpc/openapi": "catalog:",
 		"@orpc/server": "catalog:",
 		"@orpc/zod": "catalog:",
 		"@switchyard/api": "workspace:*",
 		"@switchyard/auth": "workspace:*",
+		"@switchyard/cloud": "workspace:*",
 		"@switchyard/db": "workspace:*",
 		"better-auth": "catalog:",
 		"hono": "^4.13.7",
+		"nodemailer": "^10.1.7",
+		"stripe": "22.6.2",
 		"varlock": "catalog:",
-		"zod": "catalog:",
-		"@modelcontextprotocol/sdk": "^1.32.1",
-		"@switchyard/cloud": "workspace:*",
-		"stripe": "22.6.2"
+		"zod": "catalog:"
 	},
 	"devDependencies": {
 		"@switchyard/config": "workspace:*",
 		"@types/bun": "catalog:",
+		"@types/nodemailer": "^8.0.2",
 		"tsdown": "^0.23.0",
 		"typescript": "catalog:"
 	}

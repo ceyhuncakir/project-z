@@ -1,0 +1,13 @@
+# Used by the `https` compose profile. Caddy obtains and renews certificates
+# for both hostnames: WEB_URL is CORS_ORIGIN and API_URL is BETTER_AUTH_URL
+# from apps/server/.env.
+
+{$WEB_URL} {
+	encode zstd gzip
+	reverse_proxy web:3001
+}
+
+{$API_URL} {
+	encode zstd gzip
+	reverse_proxy server:3000
+}

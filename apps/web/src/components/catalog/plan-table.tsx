@@ -13,6 +13,8 @@ import type { ReactNode } from "react";
 
 import { flag, formatUsd } from "@/lib/format";
 
+import { ProviderLogo } from "../provider-logo";
+
 export type CatalogPlan = Awaited<
 	ReturnType<AppRouterClient["catalog"]["plans"]>
 >["plans"][number];
@@ -23,8 +25,11 @@ export function PlanTable({
 	action,
 	selectedId,
 	onSelect,
+	hideProvider,
 }: {
 	plans: CatalogPlan[];
+	/** On a single provider's page the logo and name would repeat on every row. */
+	hideProvider?: boolean;
 	loading?: boolean;
 	action?: (plan: CatalogPlan) => ReactNode;
 	selectedId?: string;
@@ -86,16 +91,26 @@ export function PlanTable({
 										)}
 									/>
 								)}
+								{!hideProvider && (
+									<ProviderLogo provider={p.provider} className="size-7" />
+								)}
 								<div>
-									<p className="font-medium text-[13px]">{p.name}</p>
+									<p className="font-medium text-[13px]">
+										{!hideProvider && (
+											<span className="text-muted-foreground">
+												{p.providerName}{" "}
+											</span>
+										)}
+										{p.name}
+									</p>
 									<p className="font-mono text-[10.5px] text-muted-foreground">
 										{p.id}
 										{p.preview && (
 											<span
 												className="ml-1.5 text-signal"
-												title="Simulated until the live integration ships"
+												title="Coming soon: accounts can't be connected yet"
 											>
-												preview
+												soon
 											</span>
 										)}
 									</p>

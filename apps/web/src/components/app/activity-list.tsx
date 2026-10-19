@@ -55,6 +55,10 @@ export function ActivityList({
 						) : (
 							a.message
 						)}
+						{/* Teammates' actions say who; the owner's don't need to. */}
+						{a.actorName && a.actorUserId !== a.userId && (
+							<span className="text-muted-foreground"> · {a.actorName}</span>
+						)}
 					</span>
 					<time
 						className="font-mono text-[11px] text-muted-foreground"

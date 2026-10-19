@@ -13,6 +13,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { flag, formatUsd, timeAgo } from "@/lib/format";
 
 import { CopyButton } from "../copy-button";
+import { ProviderLogo } from "../provider-logo";
 import { StatusLabel } from "../status";
 
 export type ServerItem = Awaited<
@@ -37,7 +38,7 @@ export function ServerTable({
 					{!compact && <TableHead>Location</TableHead>}
 					<TableHead>IPv4</TableHead>
 					<TableHead className="text-right">Per hour</TableHead>
-					{!compact && <TableHead className="text-right">Cost</TableHead>}
+					{!compact && <TableHead className="text-right">Est. cost</TableHead>}
 					{!compact && <TableHead className="text-right">Created</TableHead>}
 				</TableRow>
 			</TableHeader>
@@ -71,7 +72,8 @@ export function ServerTable({
 							<StatusLabel status={s.status} />
 						</TableCell>
 						<TableCell>
-							<span className="inline-flex items-center gap-1.5">
+							<span className="inline-flex items-center gap-2">
+								<ProviderLogo provider={s.provider} className="size-5" />
 								{s.providerName}
 								{s.sandbox && <Badge>sandbox</Badge>}
 							</span>

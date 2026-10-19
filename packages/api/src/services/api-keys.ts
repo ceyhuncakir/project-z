@@ -8,7 +8,7 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 
 import type { ApiKeyRecord } from "../context";
 
-export const API_KEY_PREFIX = "sy_live_";
+export const API_KEY_PREFIX = "hl_live_";
 const BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 const hashKey = (key: string) => createHash("sha256").update(key).digest("hex");

@@ -137,10 +137,12 @@ export function createHetznerAdapter(
 				server_type: input.planSlug,
 				location: input.regionSlug,
 				image: providerImage("hetzner", input.image),
-				// SSH keys travel in cloud-init: Hetzner `ssh_keys` live in the project, shared by every tenant.
+				// SSH keys travel in cloud-init, so the project's own `ssh_keys` store is left alone.
 				user_data: input.userData,
 				labels: {
-					"switchyard-id": input.serverId.replace(/[^\w.-]/g, "_").slice(0, 63),
+					"hessianlabs-id": input.serverId
+						.replace(/[^\w.-]/g, "_")
+						.slice(0, 63),
 				},
 				start_after_create: true,
 				public_net: { enable_ipv4: true, enable_ipv6: true },
@@ -151,6 +153,10 @@ export function createHetznerAdapter(
 
 	return {
 		info: liveInfo(info),
+
+		async verify() {
+			await api({ path: "/servers", query: { per_page: 1 } });
+		},
 
 		async listRegions() {
 			const locations = await list<HLocation>("/locations", "locations");
@@ -223,7 +229,7 @@ export function createHetznerAdapter(
 				try {
 					return await create(input, name);
 				} catch (err) {
-					// Server names are unique per project, and the project is shared by all tenants.
+					// Server names are unique per project, and the user's project may already use this one.
 					const taken =
 						err instanceof ProviderError &&
 						/uniqueness_error/.test(err.message);

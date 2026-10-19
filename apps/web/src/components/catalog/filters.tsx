@@ -5,6 +5,8 @@ import { z } from "zod";
 
 import { orpc } from "@/utils/orpc";
 
+import { ProviderLogo } from "../provider-logo";
+
 export const CONTINENT_OPTIONS = [
 	["EU", "Europe"],
 	["NA", "N. America"],
@@ -91,7 +93,7 @@ function Chip({
 			onClick={onClick}
 			title={title}
 			className={cn(
-				"h-7 border px-2.5 font-mono text-[11px] transition-colors",
+				"inline-flex h-7 items-center gap-1.5 border px-2.5 font-mono text-[11px] transition-colors",
 				active
 					? "border-foreground bg-foreground text-background"
 					: "bg-background text-muted-foreground hover:border-foreground/40 hover:text-foreground",
@@ -112,11 +114,14 @@ export function CatalogFilters({
 	value,
 	onChange,
 	total,
+	only,
 	className,
 }: {
 	value: CatalogSearch;
 	onChange: (next: CatalogSearch) => void;
 	total?: number;
+	/** Limit the provider chips to these ids (e.g. the user's connected accounts). */
+	only?: string[];
 	className?: string;
 }) {
 	const providers = useQuery(orpc.catalog.providers.queryOptions());
@@ -127,7 +132,9 @@ export function CatalogFilters({
 	const num = (v: string) => (v ? Number(v) : undefined);
 	const shown = (providers.data ?? []).filter(
 		(p) =>
-			kind === "any" || (gpu ? p.category === "gpu" : p.category === "cloud"),
+			(kind === "any" ||
+				(gpu ? p.category === "gpu" : p.category === "cloud")) &&
+			(!only || only.includes(p.id)),
 	);
 
 	return (
@@ -171,12 +178,13 @@ export function CatalogFilters({
 						onClick={() => set({ providers: toggle(value.providers, p.id) })}
 						title={
 							p.preview
-								? "Preview: simulated until the live integration ships"
+								? "Coming soon: accounts can't be connected yet"
 								: undefined
 						}
 					>
+						<ProviderLogo provider={p.id} className="-ml-1 size-4" />
 						{p.name}
-						{p.preview && <span className="ml-1 text-signal">°</span>}
+						{p.preview && <span className="text-signal">°</span>}
 					</Chip>
 				))}
 			</div>

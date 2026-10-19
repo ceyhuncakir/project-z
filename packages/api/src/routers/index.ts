@@ -5,12 +5,18 @@ import {
 	PROVIDER_IDS,
 	planFiltersSchema,
 } from "@switchyard/cloud";
-import { server } from "@switchyard/db/schema/app";
-import { and, count, eq, notInArray } from "drizzle-orm";
+import { providerAccount, server, wallet } from "@switchyard/db/schema/app";
+import { and, count, eq, isNull, notInArray } from "drizzle-orm";
 import { z } from "zod";
 
-import { publicProcedure, sessionProcedure, userProcedure } from "../index";
-import { listActivity } from "../services/activity";
+import {
+	adminProcedure,
+	publicProcedure,
+	sessionProcedure,
+	userProcedure,
+} from "../index";
+import { deletionCheck, exportData } from "../services/account-data";
+import { listActivity, logActivity } from "../services/activity";
 import {
 	createApiKey,
 	listApiKeys,
@@ -30,22 +36,56 @@ import {
 	sizeLlm,
 } from "../services/catalog";
 import {
+	getGuardrails,
+	guardrailsInputSchema,
+	monthSpent,
+	updateGuardrails,
+} from "../services/guardrails";
+import {
+	getLowBalanceThreshold,
+	getNotificationSettings,
+	setLowBalanceThreshold,
+	updateNotificationSettings,
+} from "../services/notifications";
+import {
 	addTestCredits,
 	createPortalSession,
 	createTopupCheckout,
+	getBillingDetails,
 	getBillingSettings,
 	removeCard,
 	updateAutoTopup,
+	updateBillingDetails,
 } from "../services/payments";
+import {
+	connectProviderAccount,
+	disconnectProviderAccount,
+	listProviderAccounts,
+} from "../services/provider-accounts";
+import { listSecurityEvents } from "../services/security";
 import {
 	createServer,
 	createServerInputSchema,
 	deleteServer,
 	getServer,
+	keepServer,
 	listServers,
 	powerAction,
 } from "../services/servers";
 import { addSshKey, deleteSshKey, listSshKeys } from "../services/ssh-keys";
+import { CLOSED } from "../services/statuses";
+import {
+	acceptInvitation,
+	accountOwner,
+	describeInvitation,
+	inviteMember,
+	listAccounts,
+	listMembers,
+	removeMember,
+	revokeInvitation,
+	switchAccount,
+	updateMemberRole,
+} from "../services/team";
 import {
 	ensureWallet,
 	getBalance,
@@ -196,6 +236,21 @@ const serversRouter = {
 		.handler(({ context, input }) =>
 			powerAction(context, context.actor, input.id, input.action),
 		),
+	keep: userProcedure
+		.route({
+			method: "POST",
+			path: "/servers/{id}/keep",
+			tags: ["Servers"],
+			summary: "Extend or remove a server's time limit",
+			description:
+				"`hours` moves the time limit to that many hours from now; `null` removes it (people only, when the account limits agents).",
+		})
+		.input(
+			idInput.extend({ hours: z.number().int().min(1).max(720).nullable() }),
+		)
+		.handler(({ context, input }) =>
+			keepServer(context, context.actor, input.id, input.hours),
+		),
 };
 
 const accountRouter = {
@@ -204,32 +259,42 @@ const accountRouter = {
 			method: "GET",
 			path: "/account",
 			tags: ["Account"],
-			summary: "Balance and burn rate",
+			summary: "Balance, fee burn rate and server spend",
 		})
 		.handler(async ({ context }) => {
 			const userId = context.actor.userId;
 			await ensureWallet(context.db, userId);
-			const [balanceMicros, burnMicrosPerHour, [active]] = await Promise.all([
+			const [balanceMicros, burn, [active], [accounts]] = await Promise.all([
 				getBalance(context.db, userId),
 				burnRate(context.db, userId),
 				context.db
 					.select({ n: count() })
 					.from(server)
 					.where(
+						and(eq(server.userId, userId), notInArray(server.status, CLOSED)),
+					),
+				context.db
+					.select({ n: count() })
+					.from(providerAccount)
+					.where(
 						and(
-							eq(server.userId, userId),
-							notInArray(server.status, ["deleted", "error"]),
+							eq(providerAccount.userId, userId),
+							isNull(providerAccount.error),
 						),
 					),
 			]);
 			return {
 				balanceMicros,
-				burnMicrosPerHour,
+				/** HessianLabs's fee across active servers, charged from the balance. */
+				burnMicrosPerHour: burn.feeMicros,
+				/** List price of active servers, billed by the providers directly. */
+				serverSpendMicrosPerHour: burn.serverMicros,
 				runwayHours:
-					burnMicrosPerHour > 0
-						? Math.max(0, balanceMicros / burnMicrosPerHour)
+					burn.feeMicros > 0
+						? Math.max(0, balanceMicros / burn.feeMicros)
 						: null,
 				activeServers: active?.n ?? 0,
+				connectedAccounts: accounts?.n ?? 0,
 				apiKey: context.apiKey ? serializeApiKey(context.apiKey) : null,
 			};
 		}),
@@ -249,20 +314,27 @@ const creditsRouter = {
 	quote: publicProcedure
 		.input(z.object({ amountUsd: z.number() }))
 		.handler(({ input }) => quoteTopup(input.amountUsd)),
-	checkout: sessionProcedure
+	checkout: adminProcedure
 		.input(
 			z.object({ amountUsd: z.number(), saveCard: z.boolean().optional() }),
 		)
-		.handler(({ context, input }) =>
-			createTopupCheckout(context, context.user, input),
+		.handler(async ({ context, input }) =>
+			createTopupCheckout(
+				context,
+				await accountOwner(context.db, context.actor.userId),
+				input,
+			),
 		),
-	portal: sessionProcedure.handler(({ context }) =>
-		createPortalSession(context, context.user),
+	portal: adminProcedure.handler(async ({ context }) =>
+		createPortalSession(
+			context,
+			await accountOwner(context.db, context.actor.userId),
+		),
 	),
 	billing: sessionProcedure.handler(({ context }) =>
 		getBillingSettings(context, context.actor.userId),
 	),
-	updateAutoTopup: sessionProcedure
+	updateAutoTopup: adminProcedure
 		.input(
 			z.object({
 				enabled: z.boolean(),
@@ -273,13 +345,61 @@ const creditsRouter = {
 		.handler(({ context, input }) =>
 			updateAutoTopup(context, context.actor, input),
 		),
-	removeCard: sessionProcedure.handler(({ context }) =>
+	removeCard: adminProcedure.handler(({ context }) =>
 		removeCard(context, context.actor),
 	),
-	addTestCredits: sessionProcedure
+	addTestCredits: adminProcedure
 		.input(z.object({ amountUsd: z.number().positive().max(100) }))
 		.handler(({ context, input }) =>
 			addTestCredits(context, context.actor.userId, input.amountUsd),
+		),
+	billingDetails: sessionProcedure.handler(({ context }) =>
+		getBillingDetails(context, context.actor.userId),
+	),
+	updateBillingDetails: adminProcedure
+		.input(
+			z.object({
+				name: z.string().trim().max(200),
+				email: z.union([z.email(), z.literal("")]),
+				address: z.object({
+					line1: z.string().trim().max(200),
+					line2: z.string().trim().max(200),
+					city: z.string().trim().max(100),
+					postalCode: z.string().trim().max(20),
+					state: z.string().trim().max(100),
+					country: z.union([z.string().length(2), z.literal("")]),
+				}),
+				taxId: z.string().trim().max(40).nullable(),
+			}),
+		)
+		.handler(async ({ context, input }) =>
+			updateBillingDetails(
+				context,
+				await accountOwner(context.db, context.actor.userId),
+				input,
+			),
+		),
+};
+
+/** Cloud credentials: dashboard sessions only, never API keys. */
+const providerAccountsRouter = {
+	list: sessionProcedure.handler(({ context }) =>
+		listProviderAccounts(context, context.actor.userId),
+	),
+	connect: adminProcedure
+		.input(
+			z.object({
+				provider: z.enum(PROVIDER_IDS),
+				credentials: z.record(z.string(), z.string().max(1_000)),
+			}),
+		)
+		.handler(({ context, input }) =>
+			connectProviderAccount(context, context.actor, input),
+		),
+	disconnect: adminProcedure
+		.input(idInput)
+		.handler(({ context, input }) =>
+			disconnectProviderAccount(context, context.actor, input.id),
 		),
 };
 
@@ -360,27 +480,173 @@ const activityRouter = {
 		),
 };
 
-export const appRouter = {
-	meta: publicProcedure.handler(({ context }) => ({
-		paymentsEnabled: Boolean(context.config.stripe),
-		testCreditsEnabled: context.config.allowTestCredits,
-		githubAuth: context.config.githubAuth,
-		mcpUrl: `${context.config.apiUrl}/mcp`,
-		apiUrl: `${context.config.apiUrl}/v1`,
-		topup: {
-			feePercent: TOPUP_FEE_PERCENT,
-			feeMinMicros: TOPUP_FEE_MIN_MICROS,
-			minUsd: TOPUP_MIN_USD,
-			maxUsd: TOPUP_MAX_USD,
-		},
+const notificationsRouter = {
+	get: sessionProcedure.handler(async ({ context }) => ({
+		...(await getNotificationSettings(context.db, context.user.id)),
+		lowBalanceThresholdMicros: await getLowBalanceThreshold(
+			context.db,
+			context.actor.userId,
+		),
 	})),
+	update: sessionProcedure
+		.input(
+			z.object({
+				providerProblems: z.boolean().optional(),
+				autoTopupFailed: z.boolean().optional(),
+				lowBalance: z.boolean().optional(),
+				longRunning: z.boolean().optional(),
+				serverExpiry: z.boolean().optional(),
+				newSignIn: z.boolean().optional(),
+			}),
+		)
+		.handler(({ context, input }) =>
+			updateNotificationSettings(context.db, context.user.id, input),
+		),
+	setLowBalanceThreshold: adminProcedure
+		.input(z.object({ usd: z.number().min(1).max(10_000) }))
+		.handler(({ context, input }) =>
+			setLowBalanceThreshold(context.db, context.actor.userId, input.usd),
+		),
+};
+
+const teamRouter = {
+	/** The accounts this person can act in, and which one this session uses. */
+	accounts: sessionProcedure.handler(async ({ context }) => ({
+		active: { accountId: context.actor.userId, role: context.actor.role },
+		accounts: await listAccounts(context.db, context.user.id),
+	})),
+	switch: sessionProcedure
+		.input(z.object({ accountId: z.string() }))
+		.handler(({ context, input }) =>
+			switchAccount(
+				context.db,
+				context.sessionId,
+				context.user.id,
+				input.accountId,
+			),
+		),
+	members: sessionProcedure.handler(async ({ context }) => ({
+		role: context.actor.role,
+		...(await listMembers(context.db, context.actor.userId)),
+	})),
+	invite: adminProcedure
+		.input(z.object({ email: z.email(), role: z.enum(["admin", "member"]) }))
+		.handler(({ context, input }) =>
+			inviteMember(context, context.actor, context.user, input),
+		),
+	revokeInvitation: adminProcedure
+		.input(idInput)
+		.handler(({ context, input }) =>
+			revokeInvitation(context, context.actor, input.id),
+		),
+	updateRole: adminProcedure
+		.input(idInput.extend({ role: z.enum(["admin", "member"]) }))
+		.handler(({ context, input }) =>
+			updateMemberRole(context, context.actor, input.id, input.role),
+		),
+	/** Admins remove anyone; members can only remove themselves (leave). */
+	remove: sessionProcedure
+		.input(idInput)
+		.handler(({ context, input }) =>
+			removeMember(context, context.actor, input.id),
+		),
+	invitation: publicProcedure
+		.input(z.object({ token: z.string() }))
+		.handler(({ context, input }) =>
+			describeInvitation(context.db, input.token),
+		),
+	accept: sessionProcedure
+		.input(z.object({ token: z.string() }))
+		.handler(({ context, input }) =>
+			acceptInvitation(context, context.user, context.sessionId, input.token),
+		),
+};
+
+const guardrailsRouter = {
+	get: sessionProcedure.handler(async ({ context }) => {
+		const [w] = await context.db
+			.select({
+				monthSpentMicros: wallet.monthSpentMicros,
+				monthStartedAt: wallet.monthStartedAt,
+			})
+			.from(wallet)
+			.where(eq(wallet.userId, context.actor.userId));
+		return {
+			role: context.actor.role,
+			/** Estimated provider cost of the account's servers this month. */
+			monthSpentMicros: w ? monthSpent(w) : 0,
+			...(await getGuardrails(context.db, context.actor.userId)),
+		};
+	}),
+	update: adminProcedure
+		.input(guardrailsInputSchema)
+		.handler(async ({ context, input }) => {
+			const updated = await updateGuardrails(
+				context.db,
+				context.actor.userId,
+				input,
+			);
+			await logActivity(context.db, context.actor, {
+				action: "guardrails.update",
+				message: "Changed the agent guardrails",
+			});
+			return updated;
+		}),
+};
+
+const privacyRouter = {
+	/** Everything stored about you, and the account if you run it. */
+	export: sessionProcedure.handler(({ context }) =>
+		exportData(context, context.actor, context.user),
+	),
+	deletionCheck: sessionProcedure.handler(({ context }) =>
+		deletionCheck(context.db, context.user.id),
+	),
+	securityEvents: sessionProcedure.handler(({ context }) =>
+		listSecurityEvents(context.db, context.user.id),
+	),
+};
+
+export const appRouter = {
+	meta: publicProcedure
+		.route({
+			method: "GET",
+			path: "/meta",
+			tags: ["Meta"],
+			summary: "Public settings: fees, payments and connectable providers",
+		})
+		.handler(({ context }) => ({
+			paymentsEnabled: Boolean(context.config.stripe),
+			testCreditsEnabled: context.config.allowTestCredits,
+			githubAuth: context.config.githubAuth,
+			/** HessianLabs's fee as a percentage of each server's list price. */
+			feePercent: context.config.feeBps / 100,
+			/** "sandbox" when every provider is simulated (development). */
+			cloudMode: context.cloud.mode,
+			connectableProviders: PROVIDER_IDS.filter((id) =>
+				context.cloud.connectable(id),
+			),
+			mcpUrl: `${context.config.apiUrl}/mcp`,
+			apiUrl: `${context.config.apiUrl}/v1`,
+			topup: {
+				feePercent: TOPUP_FEE_PERCENT,
+				feeMinMicros: TOPUP_FEE_MIN_MICROS,
+				minUsd: TOPUP_MIN_USD,
+				maxUsd: TOPUP_MAX_USD,
+			},
+		})),
 	catalog: catalogRouter,
 	servers: serversRouter,
 	account: accountRouter,
 	credits: creditsRouter,
+	providerAccounts: providerAccountsRouter,
 	apiKeys: apiKeysRouter,
 	sshKeys: sshKeysRouter,
 	activity: activityRouter,
+	notifications: notificationsRouter,
+	team: teamRouter,
+	guardrails: guardrailsRouter,
+	privacy: privacyRouter,
 };
 
 export type AppRouter = typeof appRouter;

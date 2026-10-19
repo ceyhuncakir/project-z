@@ -22,3 +22,31 @@ export const flag = (country: string) =>
 	country
 		.toUpperCase()
 		.replace(/./g, (c) => String.fromCodePoint(127397 + c.charCodeAt(0)));
+
+/** "Firefox on Linux" from a user agent; API clients fall back to the raw string. */
+export function describeAgent(ua?: string | null): string {
+	if (!ua) return "Unknown device";
+	const browser = /Edg\//.test(ua)
+		? "Edge"
+		: /Firefox\//.test(ua)
+			? "Firefox"
+			: /Chrome\//.test(ua)
+				? "Chrome"
+				: /Safari\//.test(ua)
+					? "Safari"
+					: null;
+	// iOS agents mention Mac OS X and Android ones mention Linux, so check those first.
+	const os = /iPhone|iPad/.test(ua)
+		? "iOS"
+		: /Android/.test(ua)
+			? "Android"
+			: /Mac OS X/.test(ua)
+				? "macOS"
+				: /Windows/.test(ua)
+					? "Windows"
+					: /Linux/.test(ua)
+						? "Linux"
+						: null;
+	if (browser && os) return `${browser} on ${os}`;
+	return browser ?? os ?? ua.slice(0, 60);
+}

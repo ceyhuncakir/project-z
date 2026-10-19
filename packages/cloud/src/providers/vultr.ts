@@ -111,6 +111,10 @@ export function createVultrAdapter(
 	return {
 		info: liveInfo(info),
 
+		async verify() {
+			await api({ path: "/account" });
+		},
+
 		async listRegions() {
 			const regions = await list<VRegion>("/regions", "regions");
 			return regions
@@ -171,7 +175,7 @@ export function createVultrAdapter(
 						hostname: hostname(input.name),
 						user_data: toBase64(input.userData),
 						enable_ipv6: true,
-						tags: ["switchyard", input.serverId],
+						tags: ["hessianlabs", input.serverId],
 					},
 				});
 				// The response also carries `default_password`; it is deliberately dropped.

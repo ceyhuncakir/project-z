@@ -6,7 +6,7 @@ import { PageHeader, Panel } from "@/components/app/app-shell";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_app/activity")({
-	head: () => ({ meta: [{ title: "Activity — Switchyard" }] }),
+	head: () => ({ meta: [{ title: "Activity — HessianLabs" }] }),
 	component: ActivityPage,
 });
 

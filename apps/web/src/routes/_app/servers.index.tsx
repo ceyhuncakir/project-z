@@ -11,7 +11,7 @@ import { ServerTable } from "@/components/app/server-table";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_app/servers/")({
-	head: () => ({ meta: [{ title: "Servers — Switchyard" }] }),
+	head: () => ({ meta: [{ title: "Servers — HessianLabs" }] }),
 	component: ServersPage,
 });
 
@@ -28,7 +28,7 @@ function ServersPage() {
 		<>
 			<PageHeader
 				title="Servers"
-				description="Everything you and your agents have running, across every provider."
+				description="Everything you and your agents have running, across your connected cloud accounts."
 				actions={
 					<Link
 						to="/servers/new"

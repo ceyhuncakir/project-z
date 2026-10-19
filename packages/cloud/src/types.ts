@@ -57,7 +57,7 @@ export interface ProviderInfo {
 	category: ProviderCategory;
 	/** Simulated only: no live adapter exists yet. */
 	preview: boolean;
-	/** "live" when platform credentials are configured, otherwise "sandbox". */
+	/** "live" talks to the provider's API, "sandbox" simulates it. */
 	mode: AdapterMode;
 }
 
@@ -159,6 +159,8 @@ export type PowerAction = "start" | "stop" | "reboot";
 
 export interface ProviderAdapter {
 	readonly info: ProviderInfo;
+	/** Cheap authenticated read; rejects with a 401/403 ProviderError when the credentials are wrong. */
+	verify(): Promise<void>;
 	listRegions(): Promise<Region[]>;
 	listPlans(): Promise<Plan[]>;
 	createServer(input: CreateServerInput): Promise<ProviderServer>;

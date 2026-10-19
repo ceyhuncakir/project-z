@@ -108,7 +108,7 @@ export function createScalewayAdapter(
 	const auth = { "X-Auth-Token": config.secretKey };
 	const api = createJsonClient(provider, BASE, () => auth, fetchImpl);
 	const zonePath = (zone: string) => `/instance/v1/zones/${zone}`;
-	// Filled by listPlans; lets createServer size the root volume and guess the arch.
+	// Filled by listPlans (or product()); lets createServer size the root volume and guess the arch.
 	const products = new Map<string, { arch: Arch; diskBytes: number }>();
 
 	/** Products endpoints return maps keyed by commercial type, paginated with per_page/page. */
@@ -139,6 +139,25 @@ export function createScalewayAdapter(
 			offers,
 			availability: availability as Record<string, { availability?: string }>,
 		};
+	}
+
+	/** Disk size and arch of a type. A fresh adapter hasn't run listPlans, so load the zone's products once. */
+	async function product(zone: string, type: string) {
+		if (!products.has(type)) {
+			const offers = await pagedMap<SProduct>(
+				`${zonePath(zone)}/products/servers`,
+			).catch(() => ({}) as Record<string, SProduct>);
+			const p = offers[type];
+			const arch: Arch | undefined =
+				p?.arch === "arm64" ? "arm" : p?.arch === "x86_64" ? "x86" : undefined;
+			if (p && arch) {
+				products.set(type, {
+					arch,
+					diskBytes: p.volumes_constraint?.min_size || DEFAULT_DISK_BYTES,
+				});
+			}
+		}
+		return products.get(type);
 	}
 
 	function parseId(id: string) {
@@ -271,6 +290,13 @@ export function createScalewayAdapter(
 	return {
 		info: liveInfo(info),
 
+		async verify() {
+			await api({
+				path: `${zonePath("fr-par-1")}/servers`,
+				query: { project: config.projectId, per_page: 1 },
+			});
+		},
+
 		async listRegions() {
 			return ZONES.map(([zone, city, country]) =>
 				makeRegion(provider, zone, city, country, "EU"),
@@ -347,13 +373,14 @@ export function createScalewayAdapter(
 			capacityAware(provider, async () => {
 				const zone = input.regionSlug;
 				const type = input.planSlug;
+				const spec = await product(zone, type);
 				const image = await pickImage(
 					zone,
 					type,
 					providerImage("scaleway", input.image),
 				);
 				const local = image.type === "instance_local";
-				// No IAM/project SSH keys: they are shared by every tenant; cloud-init carries the keys.
+				// No IAM/project SSH keys: cloud-init carries the keys, so the account's key store is left alone.
 				const { server } = await api<{ server: SServer }>({
 					method: "POST",
 					path: `${zonePath(zone)}/servers`,
@@ -362,12 +389,12 @@ export function createScalewayAdapter(
 						commercial_type: type,
 						image: image.id,
 						project: config.projectId,
-						tags: ["switchyard", input.serverId],
+						tags: ["hessianlabs", input.serverId],
 						// Routed public IPv4 tied to the server's lifetime (IPv6 would need a separate flexible IP).
 						dynamic_ip_required: true,
 						volumes: {
 							"0": {
-								size: products.get(type)?.diskBytes ?? DEFAULT_DISK_BYTES,
+								size: spec?.diskBytes ?? DEFAULT_DISK_BYTES,
 								volume_type: local ? "l_ssd" : "sbs_volume",
 							},
 						},

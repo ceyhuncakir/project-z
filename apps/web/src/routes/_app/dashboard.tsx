@@ -12,11 +12,12 @@ import {
 	useOverview,
 } from "@/components/app/app-shell";
 import { ServerTable } from "@/components/app/server-table";
+import { DOCS_URL } from "@/lib/api-url";
 import { formatRunway, formatUsd } from "@/lib/format";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_app/dashboard")({
-	head: () => ({ meta: [{ title: "Overview — Switchyard" }] }),
+	head: () => ({ meta: [{ title: "Overview — HessianLabs" }] }),
 	component: Overview,
 });
 
@@ -33,6 +34,11 @@ function Overview() {
 
 	const o = overview.data;
 	const steps = [
+		{
+			done: (o?.connectedAccounts ?? 0) > 0,
+			label: "Connect a cloud account",
+			to: "/providers",
+		},
 		{ done: (o?.balanceMicros ?? 0) > 0, label: "Add credits", to: "/credits" },
 		{
 			done: (keys.data?.length ?? 0) > 0,
@@ -44,7 +50,7 @@ function Overview() {
 				(a) => a.actor === "mcp" || a.actor === "api",
 			),
 			label: "Let your agent launch a server",
-			to: "/docs",
+			href: DOCS_URL,
 		},
 	] as const;
 	const onboarding =
@@ -59,13 +65,12 @@ function Overview() {
 
 			{onboarding && (
 				<Panel title="Get set up" className="mb-6">
-					<ol className="grid gap-px bg-border sm:grid-cols-3">
-						{steps.map((s, i) => (
-							<li key={s.label} className="bg-card">
-								<Link
-									to={s.to}
-									className="flex items-center gap-3 p-4 transition-colors hover:bg-muted/50"
-								>
+					<ol className="grid gap-px bg-border sm:grid-cols-2 xl:grid-cols-4">
+						{steps.map((s, i) => {
+							const className =
+								"flex items-center gap-3 p-4 transition-colors hover:bg-muted/50";
+							const body = (
+								<>
 									<span
 										className={cn(
 											"flex size-6 shrink-0 items-center justify-center border font-mono text-[11px]",
@@ -85,9 +90,28 @@ function Overview() {
 									{!s.done && (
 										<ArrowRightIcon className="ml-auto size-3.5 text-muted-foreground" />
 									)}
-								</Link>
-							</li>
-						))}
+								</>
+							);
+							return (
+								<li key={s.label} className="bg-card">
+									{"href" in s ? (
+										// The docs are on the public website.
+										<a
+											href={s.href}
+											target="_blank"
+											rel="noreferrer"
+											className={className}
+										>
+											{body}
+										</a>
+									) : (
+										<Link to={s.to} className={className}>
+											{body}
+										</Link>
+									)}
+								</li>
+							);
+						})}
 					</ol>
 				</Panel>
 			)}
@@ -103,13 +127,13 @@ function Overview() {
 					}
 				/>
 				<Stat
-					label="Burn rate"
+					label="HessianLabs fee"
 					value={
 						o ? `${formatUsd(o.burnMicrosPerHour, { precise: true })}/h` : "—"
 					}
 					hint={
 						o
-							? `${formatUsd(o.burnMicrosPerHour * 730)} / month at this rate`
+							? `Servers: ${formatUsd(o.serverSpendMicrosPerHour, { precise: true })}/h, billed by your providers`
 							: undefined
 					}
 				/>
@@ -118,14 +142,16 @@ function Overview() {
 					value={o ? formatRunway(o.runwayHours) : "—"}
 					hint={
 						o?.runwayHours === null
-							? "Nothing is billing"
-							: "Until balance reaches zero"
+							? "No fees accruing"
+							: "Until credits run out; then no new servers"
 					}
 				/>
 				<Stat
 					label="Active servers"
 					value={o?.activeServers ?? "—"}
-					hint="Across all providers"
+					hint={
+						o ? `On ${o.connectedAccounts} connected account(s)` : undefined
+					}
 				/>
 			</div>
 
