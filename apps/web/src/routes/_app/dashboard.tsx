@@ -12,6 +12,7 @@ import {
 	useOverview,
 } from "@/components/app/app-shell";
 import { ServerTable } from "@/components/app/server-table";
+import { DOCS_URL } from "@/lib/api-url";
 import { formatRunway, formatUsd } from "@/lib/format";
 import { orpc } from "@/utils/orpc";
 
@@ -49,7 +50,7 @@ function Overview() {
 				(a) => a.actor === "mcp" || a.actor === "api",
 			),
 			label: "Let your agent launch a server",
-			to: "/docs",
+			href: DOCS_URL,
 		},
 	] as const;
 	const onboarding =
@@ -65,12 +66,11 @@ function Overview() {
 			{onboarding && (
 				<Panel title="Get set up" className="mb-6">
 					<ol className="grid gap-px bg-border sm:grid-cols-2 xl:grid-cols-4">
-						{steps.map((s, i) => (
-							<li key={s.label} className="bg-card">
-								<Link
-									to={s.to}
-									className="flex items-center gap-3 p-4 transition-colors hover:bg-muted/50"
-								>
+						{steps.map((s, i) => {
+							const className =
+								"flex items-center gap-3 p-4 transition-colors hover:bg-muted/50";
+							const body = (
+								<>
 									<span
 										className={cn(
 											"flex size-6 shrink-0 items-center justify-center border font-mono text-[11px]",
@@ -90,9 +90,28 @@ function Overview() {
 									{!s.done && (
 										<ArrowRightIcon className="ml-auto size-3.5 text-muted-foreground" />
 									)}
-								</Link>
-							</li>
-						))}
+								</>
+							);
+							return (
+								<li key={s.label} className="bg-card">
+									{"href" in s ? (
+										// The docs are on the public website.
+										<a
+											href={s.href}
+											target="_blank"
+											rel="noreferrer"
+											className={className}
+										>
+											{body}
+										</a>
+									) : (
+										<Link to={s.to} className={className}>
+											{body}
+										</Link>
+									)}
+								</li>
+							);
+						})}
 					</ol>
 				</Panel>
 			)}

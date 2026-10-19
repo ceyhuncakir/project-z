@@ -39,6 +39,7 @@ import {
 import type { ReactNode } from "react";
 import { toast } from "sonner";
 
+import { DOCS_URL } from "@/lib/api-url";
 import { authClient } from "@/lib/auth-client";
 import { formatUsd } from "@/lib/format";
 import { orpc } from "@/utils/orpc";
@@ -74,7 +75,6 @@ const SETTINGS_NAV = [...SETTINGS_YOU, ...SETTINGS_ACCOUNT];
 
 const SECONDARY = [
 	{ to: "/settings", label: "Settings", icon: SettingsIcon },
-	{ to: "/docs", label: "Docs", icon: BookOpenIcon },
 ] as const;
 
 export function useOverview() {
@@ -218,7 +218,7 @@ function AccountSwitchItems() {
 
 function signOut(navigate: ReturnType<typeof useNavigate>) {
 	authClient.signOut({
-		fetchOptions: { onSuccess: () => navigate({ to: "/" }) },
+		fetchOptions: { onSuccess: () => navigate({ to: "/login" }) },
 	});
 }
 
@@ -247,11 +247,18 @@ function MobileNav() {
 						))}
 					</>
 				) : (
-					[...NAV, ...SECONDARY].map(({ to, label, icon: Icon }) => (
-						<DropdownMenuItem key={to} render={<Link to={to} />}>
-							<Icon /> {label}
+					<>
+						{[...NAV, ...SECONDARY].map(({ to, label, icon: Icon }) => (
+							<DropdownMenuItem key={to} render={<Link to={to} />}>
+								<Icon /> {label}
+							</DropdownMenuItem>
+						))}
+						<DropdownMenuItem
+							render={<a href={DOCS_URL} target="_blank" rel="noreferrer" />}
+						>
+							<BookOpenIcon /> Docs
 						</DropdownMenuItem>
-					))
+					</>
 				)}
 				<DropdownMenuSeparator />
 				<AccountSwitchItems />
@@ -359,6 +366,15 @@ export function AppShell({ children }: { children: ReactNode }) {
 								{label}
 							</Link>
 						))}
+						<a
+							href={DOCS_URL}
+							target="_blank"
+							rel="noreferrer"
+							className="flex items-center gap-2.5 px-2.5 py-1.5 text-[13px] text-muted-foreground hover:text-foreground"
+						>
+							<BookOpenIcon className="size-4" />
+							Docs
+						</a>
 					</nav>
 					<div className="border-t pt-3">
 						<UserMenu />

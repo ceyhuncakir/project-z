@@ -4,11 +4,12 @@ import { Label } from "@switchyard/ui/components/label";
 import { cn } from "@switchyard/ui/lib/utils";
 import { useForm } from "@tanstack/react-form";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, redirect, useNavigate } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
 import z from "zod";
 
+import { SITE_URL } from "@/lib/api-url";
 import { authClient } from "@/lib/auth-client";
 import { site } from "@/lib/site";
 import { orpc } from "@/utils/orpc";
@@ -28,6 +29,19 @@ const schemas = {
 	}),
 };
 
+/** Where to go after signing in: a path on this app, never another site. */
+export function safeRedirect(redirect?: string) {
+	return redirect?.startsWith("/") && !redirect.startsWith("//")
+		? redirect
+		: "/dashboard";
+}
+
+/** For /login and /signup: people who are already signed in carry on. */
+export async function skipIfSignedIn(redirectTo?: string) {
+	const session = await authClient.getSession();
+	if (session.data) throw redirect({ href: safeRedirect(redirectTo) });
+}
+
 export function AuthForm({
 	mode,
 	redirect,
@@ -37,7 +51,7 @@ export function AuthForm({
 }) {
 	const navigate = useNavigate();
 	const meta = useQuery(orpc.meta.queryOptions());
-	const target = redirect?.startsWith("/") ? redirect : "/dashboard";
+	const target = safeRedirect(redirect);
 
 	const form = useForm({
 		defaultValues: { name: "", email: "", password: "" },
@@ -194,7 +208,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
 	return (
 		<div className="grid min-h-svh lg:grid-cols-2">
 			<div className="flex flex-col px-6 py-6 sm:px-10">
-				<Logo />
+				<Logo href={SITE_URL} />
 				<div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center py-12">
 					{children}
 				</div>

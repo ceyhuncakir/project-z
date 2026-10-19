@@ -16,15 +16,14 @@ prepaid credit balance. UpCloud, Contabo, Civo, Exoscale and the GPU clouds
 catalog but coming soon: they can't be connected until their live adapters
 land.
 
-![Landing page](docs/screenshots/landing.png)
+This repo is the product: the API, the MCP endpoint and the dashboard. The
+public website (landing page, plan catalog and docs) lives in its own repo,
+[hessianlabs-ai/landing](https://github.com/hessianlabs-ai/landing), and reads
+the catalog from this API's public REST endpoints.
 
-| Product showcase (animated) | Mobile |
+| Dashboard | Credits (Stripe + auto top-up) |
 | --- | --- |
-| ![Showcase](docs/screenshots/landing-showcase.png) | ![Mobile](docs/screenshots/landing-mobile.png) |
-| **GPU catalog** | **Credits (Stripe + auto top-up)** |
-| ![GPU catalog](docs/screenshots/catalog-gpu.png) | ![Credits](docs/screenshots/credits.png) |
-| **Dashboard** | **Dark mode** |
-| ![Dashboard](docs/screenshots/dashboard.png) | ![Dark mode](docs/screenshots/landing-dark.png) |
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Credits](docs/screenshots/credits.png) |
 
 ## What's in the box
 
@@ -41,20 +40,19 @@ land.
 | **Teams** | Invite people by email into an account as admins or members. They share its credits, cloud accounts, servers and keys, and switch between their own account and teams from the account menu. Owners and admins handle billing, cloud accounts, guardrails and the team; members use servers and keys. Account emails (low balance, rejected credentials, failed auto top-ups, time limits, long-running servers) go to the owner and admins, each by their own notification settings. |
 | **Account security** | Email verification, password reset, email change with approval from the old inbox, sessions you can sign out, GitHub linking, **two-factor login** (authenticator app plus backup codes), a security log of sign-ins and sign-in changes, and an email when someone signs in from a new device. Data export (JSON, without secrets) and account deletion confirmed by email, blocked while servers run or teammates depend on the account. Invoice details (name, address, VAT number) live on the account's Stripe customer. |
 | **SSH** | Keys are injected through cloud-init (never the provider's account-wide key store, which would leak across tenants). Saved keys are used by default; if there are none, a one-time ed25519 key pair is generated and returned once. |
-| **Dashboard** | Overview, servers (create / detail / power / delete / time limit), credits, API keys (with ready-to-paste MCP configs), SSH keys, activity, and settings: profile, security, sessions, notifications, data & privacy, team, guardrails and billing details. Plus a public landing page, plan catalog and docs. |
+| **Dashboard** | Overview, servers (create / detail / power / delete / time limit), credits, API keys (with ready-to-paste MCP configs), SSH keys, activity, and settings: profile, security, sessions, notifications, data & privacy, team, guardrails and billing details. Its Docs links and the logo on the sign-in pages go to the public website. |
 
 ## Stack (chosen with Better-T-Stack)
 
 Scaffolded with `create-better-t-stack` 3.47 (see `bts.jsonc`):
 
 - **Bun + Turborepo** monorepo, **Biome** for lint/format.
-- **TanStack Start** (React 19, SSR). The landing page, catalog and docs render on the server for SEO; the dashboard runs client-side behind an auth guard.
+- **TanStack Start** (React 19) for the dashboard, which runs client-side behind an auth guard.
 - **Hono on Bun** for the API server. It hosts auth, RPC, REST, the MCP endpoint, the Stripe webhook and the billing loops in one process. Web-standard `Request`/`Response` fits the MCP SDK's `WebStandardStreamableHTTPServerTransport` directly.
 - **oRPC**: end-to-end types for the dashboard, plus OpenAPI generation for the public REST API from the same procedures.
 - **PostgreSQL + Drizzle**: money needs real transactions, `ON CONFLICT` upserts and integer `bigint` amounts (micro-USD).
 - **Better Auth** for email/password, plus GitHub when configured.
 - **Stripe** for payments (Checkout, off-session PaymentIntents, billing portal). Better-T-Stack offers Polar; Stripe was swapped in for saved-card auto top-ups and broader payment-method coverage.
-- **motion** for the landing page's product showcase animations.
 - **shadcn/ui on Base UI + Tailwind v4** for components.
 
 ## Design
@@ -64,14 +62,15 @@ narrow editorial column, monospace labels and terminal-style UI, hairline grids
 instead of shadows, bento feature tiles and a single call to action. Warm paper
 and ink colours with one signal colour (international orange) used only for the
 primary action and live states. Geist and Geist Mono are self-hosted. Light,
-dark and mobile are all supported. Tokens live in `packages/ui/src/styles/globals.css`.
+dark and mobile are all supported. Tokens live in `packages/ui/src/styles/globals.css`;
+the landing repo keeps a copy, so change both.
 
 ## Layout
 
 ```
 apps/
   server/          Hono API: /api/auth, /rpc, /v1 (REST + docs), /mcp, /webhooks/stripe, billing jobs
-  web/             TanStack Start app: landing, catalog, docs, auth, dashboard
+  web/             TanStack Start app: sign-in and the dashboard
 packages/
   cloud/           Provider adapters (6 live, 11 coming soon), catalog cache, routing, GPU/LLM sizing, cloud-init, SSH keygen
   api/             Business logic (wallet, servers, billing, keys, jobs), oRPC routers, MCP tools
@@ -93,6 +92,9 @@ bun run db:start      # Postgres and MailHog in Docker (or point DATABASE_URL at
 bun run db:migrate    # or db:push while iterating on the schema
 bun run dev           # web on :3001, API on :3000
 ```
+
+The landing page runs from its own repo on :3002 (`bun run dev` there), against
+this API. The web app's `/` goes straight to the dashboard.
 
 `CREDENTIALS_KEY` seals users' cloud tokens: generate it with
 `openssl rand -base64 32` and keep a copy, because losing it means every user

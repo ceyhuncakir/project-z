@@ -32,20 +32,30 @@ export function LogoMark({ className }: { className?: string }) {
 export function Logo({
 	className,
 	to = "/",
+	href,
 }: {
 	className?: string;
 	to?: string;
+	/** Another site, such as the public website. */
+	href?: string;
 }) {
-	return (
-		<Link
-			to={to}
-			className={cn(
-				"inline-flex items-center gap-2 font-medium tracking-tight",
-				className,
-			)}
-		>
+	const classes = cn(
+		"inline-flex items-center gap-2 font-medium tracking-tight",
+		className,
+	);
+	const content = (
+		<>
 			<LogoMark />
 			<span className="text-[15px]">{site.name.toLowerCase()}</span>
+		</>
+	);
+	return href ? (
+		<a href={href} className={classes}>
+			{content}
+		</a>
+	) : (
+		<Link to={to} className={classes}>
+			{content}
 		</Link>
 	);
 }

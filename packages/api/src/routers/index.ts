@@ -608,26 +608,33 @@ const privacyRouter = {
 };
 
 export const appRouter = {
-	meta: publicProcedure.handler(({ context }) => ({
-		paymentsEnabled: Boolean(context.config.stripe),
-		testCreditsEnabled: context.config.allowTestCredits,
-		githubAuth: context.config.githubAuth,
-		/** HessianLabs's fee as a percentage of each server's list price. */
-		feePercent: context.config.feeBps / 100,
-		/** "sandbox" when every provider is simulated (development). */
-		cloudMode: context.cloud.mode,
-		connectableProviders: PROVIDER_IDS.filter((id) =>
-			context.cloud.connectable(id),
-		),
-		mcpUrl: `${context.config.apiUrl}/mcp`,
-		apiUrl: `${context.config.apiUrl}/v1`,
-		topup: {
-			feePercent: TOPUP_FEE_PERCENT,
-			feeMinMicros: TOPUP_FEE_MIN_MICROS,
-			minUsd: TOPUP_MIN_USD,
-			maxUsd: TOPUP_MAX_USD,
-		},
-	})),
+	meta: publicProcedure
+		.route({
+			method: "GET",
+			path: "/meta",
+			tags: ["Meta"],
+			summary: "Public settings: fees, payments and connectable providers",
+		})
+		.handler(({ context }) => ({
+			paymentsEnabled: Boolean(context.config.stripe),
+			testCreditsEnabled: context.config.allowTestCredits,
+			githubAuth: context.config.githubAuth,
+			/** HessianLabs's fee as a percentage of each server's list price. */
+			feePercent: context.config.feeBps / 100,
+			/** "sandbox" when every provider is simulated (development). */
+			cloudMode: context.cloud.mode,
+			connectableProviders: PROVIDER_IDS.filter((id) =>
+				context.cloud.connectable(id),
+			),
+			mcpUrl: `${context.config.apiUrl}/mcp`,
+			apiUrl: `${context.config.apiUrl}/v1`,
+			topup: {
+				feePercent: TOPUP_FEE_PERCENT,
+				feeMinMicros: TOPUP_FEE_MIN_MICROS,
+				minUsd: TOPUP_MIN_USD,
+				maxUsd: TOPUP_MAX_USD,
+			},
+		})),
 	catalog: catalogRouter,
 	servers: serversRouter,
 	account: accountRouter,
