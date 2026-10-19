@@ -1,0 +1,3 @@
+{
+  "extends": "@switchyard/config/tsconfig.base.json"
+}
